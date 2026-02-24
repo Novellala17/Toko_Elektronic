@@ -1,0 +1,211 @@
+/* Import font yang bagus */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap');
+
+.login-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, 
+    #e0f2fe 0%,      /* Biru sangat soft */
+    #fce7f3 50%,     /* Pink soft */
+    #f0f9ff 100%     /* Biru muda */
+  );
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  font-family: 'Poppins', sans-serif;
+}
+
+/* Animasi bubble */
+.bubble {
+  position: absolute;
+  animation: floatUp linear infinite;
+  z-index: 1;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+}
+
+@keyframes floatUp {
+  0% {
+    transform: translateY(100vh) rotate(0deg);
+  }
+  100% {
+    transform: translateY(-100px) rotate(360deg);
+  }
+}
+
+/* Form login dengan gradasi */
+.login-form {
+  background: linear-gradient(145deg,
+    rgba(219, 234, 254, 0.95) 0%,      /* Biru sangat transparan */
+    rgba(251, 207, 232, 0.95) 100%    /* Pink transparan */
+  );
+  padding: 40px;
+  border-radius: 24px;
+  box-shadow: 
+    0 20px 40px rgba(147, 51, 234, 0.15),
+    0 8px 16px rgba(59, 130, 246, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  width: 100%;
+  max-width: 420px;
+  z-index: 2;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Efek glow di belakang form */
+.login-form::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(
+    circle,
+    rgba(59, 130, 246, 0.1) 0%,
+    rgba(219, 39, 119, 0.05) 50%,
+    transparent 70%
+  );
+  z-index: -1;
+}
+
+.login-form h2 {
+  text-align: center;
+  color: #374151;
+  margin-bottom: 30px;
+  font-size: 32px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #3b82f6 0%, #db2777 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.login-form input {
+  width: 100%;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  border: 2px solid rgba(219, 234, 254, 0.8);
+  border-radius: 12px;
+  font-size: 16px;
+  font-family: 'Poppins', sans-serif;
+  transition: all 0.3s ease;
+  background: rgba(255, 255, 255, 0.9);
+  color: #4b5563;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.login-form input::placeholder {
+  color: #9ca3af;
+  font-weight: 300;
+}
+
+.login-form input:focus {
+  outline: none;
+  border-color: #93c5fd;
+  box-shadow: 
+    0 0 0 3px rgba(147, 197, 253, 0.3),
+    0 4px 12px rgba(59, 130, 246, 0.15);
+  background: white;
+}
+
+/* Tombol login dengan gradasi */
+.login-form button {
+  width: 100%;
+  padding: 16px;
+  background: linear-gradient(135deg, 
+    #60a5fa 0%,      /* Biru soft */
+    #f472b6 100%     /* Pink medium */
+  );
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 18px;
+  font-weight: 600;
+  font-family: 'Poppins', sans-serif;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 10px;
+  box-shadow: 
+    0 4px 15px rgba(96, 165, 250, 0.3),
+    0 2px 4px rgba(244, 114, 182, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Efek hover tombol */
+.login-form button:hover {
+  transform: translateY(-2px);
+  box-shadow: 
+    0 8px 25px rgba(96, 165, 250, 0.4),
+    0 4px 8px rgba(244, 114, 182, 0.3);
+  background: linear-gradient(135deg, 
+    #3b82f6 0%,      /* Biru lebih terang */
+    #ec4899 100%     /* Pink lebih terang */
+  );
+}
+
+/* Efek active saat tombol diklik */
+.login-form button:active {
+  transform: translateY(0);
+  box-shadow: 
+    0 2px 10px rgba(96, 165, 250, 0.3),
+    0 1px 2px rgba(244, 114, 182, 0.2);
+}
+
+/* Pesan demo */
+.login-form > div:last-child {
+  margin-top: 20px;
+  font-size: 13px;
+  color: #6b7280;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(219, 234, 254, 0.5);
+}
+
+.login-form > div:last-child strong {
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+/* Error message styling */
+.login-form > div[style*="background: #fee2e2"] {
+  background: linear-gradient(135deg, 
+    rgba(254, 226, 226, 0.9) 0%,
+    rgba(254, 202, 202, 0.9) 100%
+  ) !important;
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  color: #dc2626;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.1);
+}
+
+/* Responsive design */
+@media (max-width: 480px) {
+  .login-container {
+    padding: 20px;
+  }
+  
+  .login-form {
+    padding: 30px 25px;
+    border-radius: 20px;
+  }
+  
+  .login-form h2 {
+    font-size: 28px;
+  }
+  
+  .login-form input {
+    padding: 14px 18px;
+    font-size: 15px;
+  }
+  
+  .login-form button {
+    padding: 15px;
+    font-size: 16px;
+  }
+}
