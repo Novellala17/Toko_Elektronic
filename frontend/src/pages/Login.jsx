@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import "./Login.css";
@@ -8,9 +8,29 @@ function LoginPage({ setIsLogin }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [bubbles, setBubbles] = useState([]);
   const navigate = useNavigate();
 
   const API_BASE_URL = "http://localhost:3000";
+
+  // Generate bubbles hanya sekali saat komponen dimount
+  useEffect(() => {
+    const emojis = ["🫧","🐠","🐬","🐳","🌊","🐙","💙"];
+    const newBubbles = [];
+    
+    for (let i = 0; i < 15; i++) {
+      newBubbles.push({
+        id: i,
+        left: `${Math.random() * 90 + 5}%`,
+        fontSize: `${Math.random() * 1.5 + 0.8}rem`,
+        animationDuration: `${Math.random() * 8 + 5}s`,
+        opacity: Math.random() * 0.6 + 0.4,
+        emoji: emojis[Math.floor(Math.random() * emojis.length)]
+      });
+    }
+    
+    setBubbles(newBubbles);
+  }, []); // Empty dependency array = hanya sekali
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -18,7 +38,6 @@ function LoginPage({ setIsLogin }) {
     setIsLoading(true);
 
     try {
-      // ✨ PERBAIKAN: Ubah dari /api/auth/login ke /auth/login
       const response = await axios.post(`${API_BASE_URL}/auth/login`, {
         username: username,
         password: password
@@ -26,7 +45,6 @@ function LoginPage({ setIsLogin }) {
 
       console.log("Response dari backend:", response.data);
 
-      // ✅ Simpan data user ke localStorage
       if (response.data.accessToken) {
         localStorage.setItem("token", response.data.accessToken);
       }
@@ -34,21 +52,18 @@ function LoginPage({ setIsLogin }) {
       if (response.data.refreshToken) {
         localStorage.setItem("refreshToken", response.data.refreshToken);
       }
-      // Simpan data user (opsional)
+      
       if (response.data.user) {
         localStorage.setItem("user", JSON.stringify(response.data.user));
       }
-      // Simpan status login
+      
       localStorage.setItem("isLogin", "true");
-      // Update state
       setIsLogin(true);
-      // Redirect ke home
       navigate("/home");
     } catch (error) {
       console.error("Login error:", error);
 
       if (error.response) {
-        // Server merespons dengan error
         setError(error.response.data.message || "Username atau Password salah!");
       } else if (error.request) {
         setError("Tidak dapat terhubung ke server. Pastikan backend menyala!");
@@ -60,22 +75,21 @@ function LoginPage({ setIsLogin }) {
     }
   };
 
-  const emojis = ["🫧","🐠","🐬","🐳","🌊","🐙","💙"];
-
   return (
     <div className="login-container">
-      {[...Array(15)].map((_, i) => (
+      {/* Gunakan bubbles dari state, bukan generate ulang */}
+      {bubbles.map((bubble) => (
         <span
-          key={i}
+          key={bubble.id}
           className="bubble"
           style={{
-            left: `${Math.random() * 90 + 5}%`,
-            fontSize: `${Math.random() * 1.5 + 0.8}rem`,
-            animationDuration: `${Math.random() * 8 + 5}s`,
-            opacity: Math.random() * 0.6 + 0.4
+            left: bubble.left,
+            fontSize: bubble.fontSize,
+            animationDuration: bubble.animationDuration,
+            opacity: bubble.opacity
           }}
         >
-          {emojis[Math.floor(Math.random() * emojis.length)]}
+          {bubble.emoji}
         </span>
       ))}
 
