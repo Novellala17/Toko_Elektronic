@@ -30,7 +30,7 @@ function LoginPage({ setIsLogin }) {
     }
     
     setBubbles(newBubbles);
-  }, []); // Empty dependency array = hanya sekali
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -95,6 +95,7 @@ function LoginPage({ setIsLogin }) {
 
       <form className="login-form" onSubmit={handleLogin}>
         <h2>🔒 Login System</h2>
+        
         {error && (
           <div style={{
             background: "#fee2e2",
@@ -107,22 +108,33 @@ function LoginPage({ setIsLogin }) {
             {error}
           </div>
         )}
-        <input
-          type="text"
-          placeholder="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-          disabled={isLoading}
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          disabled={isLoading}
-        />
+        
+        {/* Username dengan icon 👤 */}
+        <div className="input-container">
+          <span className="input-icon">👤</span>
+          <input
+            type="text"
+            placeholder="Username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            disabled={isLoading}
+          />
+        </div>
+
+        {/* Password dengan icon 🔐 */}
+        <div className="input-container">
+          <span className="input-icon">🔐</span>
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            disabled={isLoading}
+          />
+        </div>
+
         <button 
           type="submit" 
           disabled={isLoading}
