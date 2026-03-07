@@ -4,9 +4,9 @@
 .login-container {
   min-height: 100vh;
   background: linear-gradient(135deg, 
-    #e0f2fe 0%,      /* Biru sangat soft */
-    #fce7f3 50%,     /* Pink soft */
-    #f0f9ff 100%     /* Biru muda */
+    #c7e9ff 0%,
+    #ffe4f0 50%,
+    #d1ecff 100%
   );
   display: flex;
   align-items: center;
@@ -21,7 +21,9 @@
   position: absolute;
   animation: floatUp linear infinite;
   z-index: 1;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+  filter: drop-shadow(0 2px 4px rgba(255, 200, 220, 0.2));
+  user-select: none;
+  pointer-events: none;
 }
 
 @keyframes floatUp {
@@ -33,28 +35,28 @@
   }
 }
 
-/* Form login dengan gradasi */
+/* Form login */
 .login-form {
   background: linear-gradient(145deg,
-    rgba(219, 234, 254, 0.95) 0%,      /* Biru sangat transparan */
-    rgba(251, 207, 232, 0.95) 100%    /* Pink transparan */
+    rgba(255, 245, 250, 0.95) 0%,
+    rgba(240, 248, 255, 0.95) 100%
   );
   padding: 40px;
   border-radius: 24px;
   box-shadow: 
-    0 20px 40px rgba(147, 51, 234, 0.15),
-    0 8px 16px rgba(59, 130, 246, 0.1),
+    0 20px 40px rgba(255, 180, 200, 0.2),
+    0 8px 16px rgba(150, 200, 255, 0.15),
     inset 0 1px 0 rgba(255, 255, 255, 0.5);
   width: 100%;
   max-width: 420px;
   z-index: 2;
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.5);
   position: relative;
   overflow: hidden;
 }
 
-/* Efek glow di belakang form */
+/* Efek glow */
 .login-form::before {
   content: '';
   position: absolute;
@@ -64,8 +66,8 @@
   height: 200%;
   background: radial-gradient(
     circle,
-    rgba(59, 130, 246, 0.1) 0%,
-    rgba(219, 39, 119, 0.05) 50%,
+    rgba(170, 220, 255, 0.1) 0%,
+    rgba(255, 200, 220, 0.1) 50%,
     transparent 70%
   );
   z-index: -1;
@@ -73,51 +75,75 @@
 
 .login-form h2 {
   text-align: center;
-  color: #374151;
+  color: #4a5568;
   margin-bottom: 30px;
   font-size: 32px;
   font-weight: 600;
-  background: linear-gradient(135deg, #3b82f6 0%, #db2777 100%);
+  background: linear-gradient(135deg, #8fc5ff 0%, #ffb8d0 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-.login-form input {
-  width: 100%;
-  padding: 16px 20px;
+/* Container untuk input dengan icon */
+.input-container {
+  position: relative;
   margin-bottom: 20px;
-  border: 2px solid rgba(219, 234, 254, 0.8);
+  width: 100%;
+}
+
+/* Style untuk icon di dalam input */
+.input-container .input-icon {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 20px;
+  z-index: 3;
+  color: #a5b0c0;
+  transition: all 0.3s ease;
+  pointer-events: none; /* Biar tidak bisa diklik */
+}
+
+/* Style input dengan padding kiri untuk icon */
+.input-container input {
+  width: 100%;
+  padding: 16px 20px 16px 48px !important; /* Padding kiri untuk icon */
+  border: 2px solid rgba(255, 220, 235, 0.6);
   border-radius: 12px;
   font-size: 16px;
   font-family: 'Poppins', sans-serif;
   transition: all 0.3s ease;
   background: rgba(255, 255, 255, 0.9);
   color: #4b5563;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  box-sizing: border-box; /* Penting biar padding tidak nambah lebar */
 }
 
-.login-form input::placeholder {
-  color: #9ca3af;
-  font-weight: 300;
-}
-
-.login-form input:focus {
+.input-container input:focus {
   outline: none;
-  border-color: #93c5fd;
-  box-shadow: 
-    0 0 0 3px rgba(147, 197, 253, 0.3),
-    0 4px 12px rgba(59, 130, 246, 0.15);
+  border-color: #ffc0d5;
+  box-shadow: 0 0 0 3px rgba(255, 200, 220, 0.2);
   background: white;
 }
 
-/* Tombol login dengan gradasi */
+/* Efek icon berubah warna saat input focus */
+.input-container:focus-within .input-icon {
+  color: #ffb8d0;
+  transform: translateY(-50%) scale(1.1);
+}
+
+/* Hilangkan default input style dari form */
+.login-form input {
+  margin-bottom: 0; /* Biar diatur oleh container */
+}
+
+/* Tombol login */
 .login-form button {
   width: 100%;
   padding: 16px;
   background: linear-gradient(135deg, 
-    #60a5fa 0%,      /* Biru soft */
-    #f472b6 100%     /* Pink medium */
+    #a5d0ff 0%,
+    #ffc9dd 100%
   );
   color: white;
   border: none;
@@ -128,63 +154,31 @@
   cursor: pointer;
   transition: all 0.3s ease;
   margin-top: 10px;
-  box-shadow: 
-    0 4px 15px rgba(96, 165, 250, 0.3),
-    0 2px 4px rgba(244, 114, 182, 0.2);
-  position: relative;
-  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(165, 208, 255, 0.2);
 }
 
-/* Efek hover tombol */
-.login-form button:hover {
+.login-form button:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 
-    0 8px 25px rgba(96, 165, 250, 0.4),
-    0 4px 8px rgba(244, 114, 182, 0.3);
-  background: linear-gradient(135deg, 
-    #3b82f6 0%,      /* Biru lebih terang */
-    #ec4899 100%     /* Pink lebih terang */
-  );
+  box-shadow: 0 8px 25px rgba(165, 208, 255, 0.3);
+  background: linear-gradient(135deg, #8fc5ff 0%, #ffb8d0 100%);
 }
 
-/* Efek active saat tombol diklik */
 .login-form button:active {
   transform: translateY(0);
-  box-shadow: 
-    0 2px 10px rgba(96, 165, 250, 0.3),
-    0 1px 2px rgba(244, 114, 182, 0.2);
 }
 
-/* Pesan demo */
-.login-form > div:last-child {
-  margin-top: 20px;
-  font-size: 13px;
-  color: #6b7280;
-  text-align: center;
-  background: rgba(255, 255, 255, 0.7);
+/* Error message */
+.error-message {
+  background: #fee2e2;
+  color: #dc2626;
   padding: 12px;
   border-radius: 8px;
-  border: 1px solid rgba(219, 234, 254, 0.5);
+  margin-bottom: 20px;
+  font-size: 14px;
+  text-align: center;
 }
 
-.login-form > div:last-child strong {
-  color: #3b82f6;
-  font-weight: 600;
-}
-
-/* Error message styling */
-.login-form > div[style*="background: #fee2e2"] {
-  background: linear-gradient(135deg, 
-    rgba(254, 226, 226, 0.9) 0%,
-    rgba(254, 202, 202, 0.9) 100%
-  ) !important;
-  border: 1px solid rgba(248, 113, 113, 0.3);
-  color: #dc2626;
-  font-weight: 500;
-  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.1);
-}
-
-/* Responsive design */
+/* Responsive */
 @media (max-width: 480px) {
   .login-container {
     padding: 20px;
@@ -192,20 +186,25 @@
   
   .login-form {
     padding: 30px 25px;
-    border-radius: 20px;
   }
   
   .login-form h2 {
     font-size: 28px;
+    margin-bottom: 25px;
   }
   
-  .login-form input {
-    padding: 14px 18px;
+  .input-container input {
+    padding: 14px 20px 14px 45px !important;
     font-size: 15px;
   }
   
+  .input-container .input-icon {
+    left: 14px;
+    font-size: 18px;
+  }
+  
   .login-form button {
-    padding: 15px;
+    padding: 14px;
     font-size: 16px;
   }
 }
