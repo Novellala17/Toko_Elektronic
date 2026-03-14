@@ -2,7 +2,7 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { useState, useEffect } from "react";
 import axios from "axios";
-import "./Product.css";
+import "./product.css";
 
 function ProductPage() {
   const navigate = useNavigate();
