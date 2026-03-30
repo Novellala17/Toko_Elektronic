@@ -1,7 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import "./Navbar.css"; // IMPORT DARI FOLDER SAMA
 
-
 function NavbarComponent() {
   const navigate = useNavigate();
 
@@ -16,11 +15,14 @@ function NavbarComponent() {
 
   return (
     <nav className="navbar">
-      <h2 className="logo">🛒 Toko Elektronik</h2>
+      <h2 className="logo" onClick={() => navigate("/home")} style={{cursor: 'pointer'}}>
+        🛒 Toko Elektronik
+      </h2>
 
       <div className="nav-menu">
         <button onClick={() => navigate("/home")}>🏠 Home</button>
         <button onClick={() => navigate("/dashboard")}>📦 Dashboard</button>
+        <button onClick={() => navigate("/testimonial")}>💬 Testimonial</button>
         <button 
           onClick={handleLogout}
           style={{ background: "#ff6b6b", color: "white" }}
@@ -39,4 +41,4 @@ function NavbarComponent() {
   );
 }
 
-export default NavbarComponent;   
+export default NavbarComponent;

@@ -4,8 +4,28 @@ const app = express();
 const cors = require('cors');
 const port = process.env.PORT || 3000;
 
+// ✅ Ambil URL dari environment
+const BASE_URL = process.env.RAILWAY_PUBLIC_DOMAIN 
+  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+  : `http://localhost:${port}`;
+
 app.use(express.json());
-app.use(cors());
+
+// ✅ CORS dengan URL Vercel yang BENAR
+app.use(cors({
+  origin: [
+    'https://toko-elektronic.vercel.app',     // ✅ URL Vercel kamu yang asli
+    'https://toko-elektronic-git-main-novellala17s-projects.vercel.app',
+    'https://toko-elektronic-rgkwv0z43-novellala17s-projects.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:5500'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 // Swagger setup
 const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
@@ -18,7 +38,14 @@ const swaggerDefinition = {
     description: 'API untuk tugas akhir Rekayasa Perangkat Lunak - Toko Elektronik',
   },
   servers: [
-    { url: `http://localhost:${port}`, description: 'Local server' }
+    { 
+      url: BASE_URL,
+      description: 'Production server' 
+    },
+    { 
+      url: `http://localhost:${port}`, 
+      description: 'Local server (development)' 
+    }
   ],
   components: {
     securitySchemes: {
@@ -30,7 +57,7 @@ const swaggerDefinition = {
 
 const options = {
   swaggerDefinition,
-  apis: [__dirname + '/routes/*.js'] // ✅ gunakan path absolut
+  apis: [__dirname + '/routes/*.js']
 };
 
 const swaggerSpec = swaggerJsdoc(options);
@@ -45,9 +72,29 @@ app.use('/categories', require('./routes/categories'));
 app.use('/users', require('./routes/users'));
 app.use('/customer', require('./routes/customer'));
 
+// ✅ Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    database: 'connected'
+  });
+});
 
 app.get('/', (req, res) => {
-  res.send("💻 <h2>Selamat datang di <b>Toko Elektronik Kami!!!</b></h2>");
+  res.json({
+    message: 'Selamat datang di Toko Elektronik Kami!!!',
+    backend: BASE_URL,
+    docs: `${BASE_URL}/docs`,
+    health: `${BASE_URL}/health`,
+    endpoints: {
+      auth: '/auth',
+      products: '/products',
+      transactions: '/transactions',
+      categories: '/categories'
+    }
+  });
 });
 
 // Global error handler
@@ -57,8 +104,9 @@ app.use((err, req, res, next) => {
 });
 
 // Jalankan server
-app.listen(port, () => {
-  console.log(`💻 Server berjalan di: http://localhost:${port}`);
-  console.log(`✅ Swagger telah berjalan di: http://localhost:${port}/docs`);
+app.listen(port, '0.0.0.0', () => {
+  console.log(`💻 Server berjalan di: ${BASE_URL}`);
+  console.log(`✅ Swagger: ${BASE_URL}/docs`);
+  console.log(`✅ Health check: ${BASE_URL}/health`);
   console.log('🛒⚡Selamat datang di Toko Elektronik Kami!!! 🛒⚡');
 });

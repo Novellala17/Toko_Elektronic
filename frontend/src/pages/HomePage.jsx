@@ -1,9 +1,13 @@
 import { Link } from "react-router-dom";
+import SideMenu from "../Components/SideMenu"; // <-- TAMBAHKAN INI
 import "./HomePage.css";
 
 function HomePage() {
   return (
     <div className="home-container">
+      {/* TAMBAHKAN SIDE MENU DI SINI */}
+      <SideMenu />
+      
       {/* Header Section */}
       <div className="home-header">
         <h1>Selamat Datang di Toko Elektronik</h1>

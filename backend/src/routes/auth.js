@@ -11,8 +11,9 @@ const bcrypt = require('bcrypt'); // Import bcrypt untuk hash password
 const jwt = require('jsonwebtoken'); // Import JWT untuk token autentikasi
 const pool = require('../db/pool'); // Import koneksi database PostgreSQL
 const { authenticateToken } = require('../middleware/authorization'); // Middleware untuk cek JWT
+const crypto = require('crypto'); // Tambahkan crypto untuk generate random token
 
-const ACCESS_EXPIRES = process.env.ACCESS_TOKEN_EXPIRES_IN || '60m'; // Default 15 menit untuk access token
+const ACCESS_EXPIRES = process.env.ACCESS_TOKEN_EXPIRES_IN || '4h'; 
 const REFRESH_EXPIRES = process.env.REFRESH_TOKEN_EXPIRES_IN || '7d'; // Default 7 hari untuk refresh token
 
 // =================== REGISTER ==========================
@@ -162,6 +163,139 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// =================== FORGOT PASSWORD ==========================
+/**
+ * @swagger
+ * /auth/forgot-password:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Request password reset link
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email: { type: string }
+ *     responses:
+ *       200:
+ *         description: Reset link sent
+ *       404:
+ *         description: Email not found
+ */
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    // Cek apakah email terdaftar
+    const user = await pool.query(
+      'SELECT id_users, name, email FROM users WHERE email = $1',
+      [email]
+    );
+
+    if (user.rows.length === 0) {
+      return res.status(404).json({ message: 'Email tidak ditemukan dalam sistem' });
+    }
+
+    // Generate reset token (random string)
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    
+    // Set expiry 1 jam dari sekarang
+    const expiryDate = new Date();
+    expiryDate.setHours(expiryDate.getHours() + 1);
+
+    // Simpan token ke database
+    await pool.query(
+      'UPDATE users SET reset_token = $1, reset_expiry = $2 WHERE email = $3',
+      [resetToken, expiryDate, email]
+    );
+
+    // TODO: Kirim email dengan reset link
+    // Untuk development, kita kirim token di response
+    console.log(`Reset token untuk ${email}: ${resetToken}`);
+    console.log(`Reset link: http://localhost:5173/reset-password?token=${resetToken}`);
+
+    res.json({ 
+      message: 'Link reset password telah dikirim ke email Anda',
+      // Hanya untuk development, hapus di production!
+      devToken: resetToken 
+    });
+
+  } catch (err) {
+    console.error('Forgot password error:', err);
+    res.status(500).json({ error: 'Gagal memproses request reset password' });
+  }
+});
+
+// =================== RESET PASSWORD (FIXED) ==========================
+/**
+ * @swagger
+ * /auth/reset-password:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Reset password with token
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               token: { type: string }
+ *               newPassword: { type: string }
+ *     responses:
+ *       200:
+ *         description: Password reset successful
+ *       400:
+ *         description: Invalid or expired token
+ */
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ message: 'Token and new password are required' });
+    }
+
+    console.log('🔄 Reset password attempt with token:', token);
+
+    // Cari user dengan token yang valid dan belum expired
+    const user = await pool.query(
+      'SELECT id_users, email FROM users WHERE reset_token = $1 AND reset_expiry > NOW()',
+      [token]
+    );
+
+    console.log('📋 User found:', user.rows[0]?.email);
+
+    if (user.rows.length === 0) {
+      console.log('❌ Token invalid or expired');
+      return res.status(400).json({ message: 'Token tidak valid atau sudah kadaluarsa' });
+    }
+
+    // Hash password baru
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    console.log('🔑 New password hashed');
+
+    // 🔥 FIX: UPDATE menggunakan id_users, BUKAN reset_token
+    await pool.query(
+      'UPDATE users SET password = $1, reset_token = NULL, reset_expiry = NULL WHERE id_users = $2',
+      [hashedPassword, user.rows[0].id_users]
+    );
+
+    console.log('✅ Password updated for user:', user.rows[0].email);
+
+    res.json({ message: 'Password berhasil direset. Silakan login dengan password baru.' });
+
+  } catch (err) {
+    console.error('❌ Reset password error:', err);
+    res.status(500).json({ error: 'Gagal mereset password' });
+  }
+});
 
 // =================== PROFILE ==========================
 /**
@@ -324,7 +458,6 @@ router.put('/deactivate-user', async (req, res) => {
     res.status(500).json({ error: 'Failed to deactivate user' });
   }
 });
-
 
 // =================== UTIL ==========================
 function parseDurationToMs(str) {

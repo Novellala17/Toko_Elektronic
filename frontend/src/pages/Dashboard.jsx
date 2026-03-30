@@ -2,6 +2,8 @@ import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import axios from "axios";
 import "./Dashboard.css";
+import SideMenu from "../Components/SideMenu";
+
 
 function DashboardPage({ setIsLogin }) {
   const navigate = useNavigate();
@@ -13,8 +15,73 @@ function DashboardPage({ setIsLogin }) {
   const [showCart, setShowCart] = useState(false);
   const [error, setError] = useState("");
   const [user, setUser] = useState(null);
+  
+  // State untuk pencarian
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  // State untuk checkout & pembayaran
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState("");
+  const [paymentMethods, setPaymentMethods] = useState([
+    // Virtual Account
+    { id: "bca", name: "BCA Virtual Account", icon: "🏦", category: "Virtual Account", processingTime: "Instan", adminFee: 4000 },
+    { id: "mandiri", name: "Mandiri Virtual Account", icon: "🏦", category: "Virtual Account", processingTime: "Instan", adminFee: 4000 },
+    { id: "bri", name: "BRI Virtual Account", icon: "🏦", category: "Virtual Account", processingTime: "Instan", adminFee: 4000 },
+    { id: "bni", name: "BNI Virtual Account", icon: "🏦", category: "Virtual Account", processingTime: "Instan", adminFee: 4000 },
+    
+    // E-Wallet
+    { id: "gopay", name: "GoPay", icon: "📱", category: "E-Wallet", processingTime: "Instan", adminFee: 2000 },
+    { id: "ovo", name: "OVO", icon: "📱", category: "E-Wallet", processingTime: "Instan", adminFee: 2000 },
+    { id: "dana", name: "DANA", icon: "📱", category: "E-Wallet", processingTime: "Instan", adminFee: 2000 },
+    { id: "linkaja", name: "LinkAja", icon: "📱", category: "E-Wallet", processingTime: "Instan", adminFee: 2000 },
+    { id: "shopeepay", name: "ShopeePay", icon: "📱", category: "E-Wallet", processingTime: "Instan", adminFee: 2000 },
+    
+    // Retail
+    { id: "alfamart", name: "Alfamart", icon: "🏪", category: "Retail", processingTime: "1x24 Jam", adminFee: 5000 },
+    { id: "indomaret", name: "Indomaret", icon: "🏪", category: "Retail", processingTime: "1x24 Jam", adminFee: 5000 },
+    
+    // Kartu Kredit
+    { id: "kartu_kredit", name: "Kartu Kredit", icon: "💳", category: "Kartu Kredit", processingTime: "Instan", adminFee: 6500 },
+    
+    // Tunai (Hanya untuk Cashier)
+    { id: "tunai", name: "Tunai", icon: "💵", category: "Tunai", processingTime: "Instan", adminFee: 0, forRole: "cashier" },
+    { id: "debit", name: "Kartu Debit", icon: "💳", category: "Debit", processingTime: "Instan", adminFee: 0, forRole: "cashier" }
+  ]);
+ 
+  // State untuk struk
+  const [showReceipt, setShowReceipt] = useState(false);
+  const [receiptData, setReceiptData] = useState(null);
+  
+  // State untuk riwayat transaksi
+  const [transactionHistory, setTransactionHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+  
+  // State untuk mode cashier (melayani customer)
+  const [cashierMode, setCashierMode] = useState(false);
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
 
   const API_BASE_URL = "http://localhost:3000";
+
+  // Cek role user
+  const isAdmin = user?.role === "admin";
+  const isCashier = user?.role === "cashier";
+  const isCustomer = !isAdmin && !isCashier;
+
+  // Load transaction history from localStorage
+  useEffect(() => {
+    const savedHistory = localStorage.getItem("transactionHistory");
+    if (savedHistory) {
+      setTransactionHistory(JSON.parse(savedHistory));
+    }
+  }, []);
+
+  // Save transaction history to localStorage
+  useEffect(() => {
+    if (transactionHistory.length > 0) {
+      localStorage.setItem("transactionHistory", JSON.stringify(transactionHistory));
+    }
+  }, [transactionHistory]);
 
   useEffect(() => {
     const userData = localStorage.getItem("user");
@@ -48,24 +115,11 @@ function DashboardPage({ setIsLogin }) {
         headers: { Authorization: `Bearer ${token}` }
       } : {};
 
-      // AMBIL PRODUCTS dengan JOIN ke categories
       const productsRes = await axios.get(`${API_BASE_URL}/products`, config);
-      console.log("Products from DB:", productsRes.data);
-
-      // AMBIL CATEGORIES
       const categoriesRes = await axios.get(`${API_BASE_URL}/categories`, config);
-      console.log("Categories from DB:", categoriesRes.data);
 
-      // Format Categories
-      let categoriesData = [];
-      if (Array.isArray(categoriesRes.data)) {
-        categoriesData = categoriesRes.data;
-      } else if (categoriesRes.data.data && Array.isArray(categoriesRes.data.data)) {
-        categoriesData = categoriesRes.data.data;
-      }
-
-      const formattedCategories = categoriesData.map(item => ({
-        id: item.id_category || item.id,
+      const formattedCategories = categoriesRes.data.map(item => ({
+        id: item.id_category,
         name: item.name,
         icon: getCategoryIcon(item.name)
       }));
@@ -75,57 +129,49 @@ function DashboardPage({ setIsLogin }) {
         ...formattedCategories
       ]);
 
-      // Format Products
-      let productsData = [];
-      if (Array.isArray(productsRes.data)) {
-        productsData = productsRes.data;
-      } else if (productsRes.data.data && Array.isArray(productsRes.data.data)) {
-        productsData = productsRes.data.data;
-      } else if (productsRes.data.products && Array.isArray(productsRes.data.products)) {
-        productsData = productsRes.data.products;
-      }
-
-      // 🔥 MAPPING produk dengan GAMBAR (PAKAI PICSUM)
-      const formattedProducts = productsData.map((item, index) => {
-        // Cari nama kategori dari category_id
+      const formattedProducts = productsRes.data.map((item) => {
         let categoryName = "Umum";
         if (item.category_id) {
-          const foundCategory = formattedCategories.find(c => c.id === item.category_id);
+          const foundCategory = categoriesRes.data.find(c => c.id_category === item.category_id);
           if (foundCategory) {
             categoryName = foundCategory.name;
           }
-        } else if (item.category) {
-          categoryName = item.category;
         }
 
-       
+        const imageUrl = item.image_url || 'https://via.placeholder.com/200x200?text=No+Image';
 
         return {
-          id: item.id_product || item.id,
+          id: item.id_product,
           name: item.name,
           price: parseFloat(item.price) || 0,
           category: categoryName,
           category_id: item.category_id,
-          rating: 4.5, // Default rating
+          rating: 4.5,
           stock: parseInt(item.stock) || 0,
           description: item.description || "",
           image_url: imageUrl
         };
       });
 
-      console.log("Formatted products with images:", formattedProducts);
       setProducts(formattedProducts);
 
     } catch (error) {
       console.error("Error fetching data:", error);
-      setError("Gagal memuat data. Menggunakan data cadangan...");
-      loadMockData();
+      
+      if (error.response) {
+        setError(`Error ${error.response.status}: ${error.response.data.message || 'Gagal ambil data'}`);
+      } else if (error.request) {
+        setError("Tidak dapat terhubung ke server. Pastikan backend berjalan di http://localhost:3000");
+      } else {
+        setError("Terjadi kesalahan: " + error.message);
+      }
+      
+      setProducts([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Fungsi untuk icon kategori
   const getCategoryIcon = (categoryName) => {
     const iconMap = {
       'Laptop': '💻',
@@ -141,42 +187,6 @@ function DashboardPage({ setIsLogin }) {
     return iconMap[categoryName] || '📦';
   };
 
-  // Mock data sebagai fallback (DENGAN GAMBAR PICSUM)
-  const loadMockData = () => {
-    const mockProducts = [
-      { id: 1, name: "Laptop ASUS ROG Strix", price: 18500000, category: "Laptop", rating: 4.8, stock: 10, image_url: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBwgHBgkIBwgKCgkLDRYPDQwMDRsUFRAWIB0iIiAdHx8kKDQsJCYxJx8fLT0tMTU3Ojo6Iys/RD84QzQ5OjcBCgoKDQwNGg8PGjclHyU3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3N//AABEIAJQA2gMBEQACEQEDEQH/xAAcAAAABwEBAAAAAAAAAAAAAAAAAgMEBQYHAQj/xABUEAABAwIDAwULBwcJBQkAAAABAgMEABEFEiEGMUETIlFhgQcUFzJxkZShsdHhI0JSVGKSwQgVM1Nyc/AkNENkgpOjs/E2dISi0hYlNURFRlVj4v/EABsBAAIDAQEBAAAAAAAAAAAAAAACAQMEBQYH/8QAMxEAAgECBAMFBwQDAQAAAAAAAAECAxEEEiExE0FRBTJhcZEUIkKBobHwM1LB0QYj4RX/2gAMAwEAAhEDEQA/ANxoAFAFL7r02VB2FmuwZDsZ5TjTfKtKsoBTiQbHhpUxV5JCydk2efu+sXGgx/FfSl++t/sceph9sl0H0BU2QQHNpMYRf+tK99XQ7PpS3kzPW7QrQ2in6kicNngEp2mxo/8AFK99an2NTSupMtwGPeIdpqw2VExNJsNo8Y9KV76w1sBk2Z7XB9k4bELWbAmJiZ/9x4v6Sr31FHBwqO0mzTX/AMdpQjeM2/khpNGLx7EY/ixSeJlL99a32TT/AHM4FbCum7NjnZhqdiuMd4TdpsZaC0ktrbkq5x7T0XqqXZsVFtPYyTTUW1yFcWw/GcNkSGF7RYuS0rT+VK1F9+/yVa+y6fDU1JlHEfIVaw+a5ES//wBpsZ1H1lXvqF2VB/EzmV+0qtKVlFEPMdxVh1SEbQYsq3Eyl++s9TAxhKybLaWPlNXcUNVTsZSL/n7FPSl++hYGPUvWKfQIMRxn/wCexT0pfvo9ij+5je0voGM/GggqGO4p6Uv31PsMbXuxfane1hEYtjJNjjuKelL99QsFB/EyzjPoOO/sYKMycfxU/wDFL99N7BDqyv2p3tYS/OeMlVjj2KelL99SsBB7yY3tD6BXsTxpvdjmJkdPfS/fSvAxXNjQr5uRxWK45kzDHMTPlmK99LPBRjrcdVHe1gzeJY2of+OYmD/viv8Aqp/YIOGaMglUktkIuYxj6Sf++sSsP66r/qrJwYdR1K6FPzjtEEFTmK4sEp3nvtenrp40KcuZDk0a53AMUxGW9jMWbPkym2ksuI5dwrKSoqBsT5BVOIpKnOyZMJZlc2SqBwUACgAUACgCld15kyNjFsg6uTIqfO8kU9L9ReaKcTPJRnN8k/sYlieBS4SjmQSm/jCu7Km0zzuHx1OrzIoZ21a3SoURdjbpJE1h2IZk5HDe+6tlOrdWYUKSg7ocrc51TOKkj1fZ2MlTa1DoOu+sXDySPaUMSqsDshoPtFFhet8HdHJx+HT1K8pTsKS3Iaul6O5mB6Nff7aV+7LU83UjlZo2NNNY9g0bFoqRd5nI4BwPR2EWpaTyOVF/I52XJNw6FRhvq7xU3fxammzn4ygpbEVPuXM3TWbEb3MtHRWGawMulRFaGhDY6KoasW8hwyQq4NTHVlU9BtIaLa78KWasXU5ZkGiuC+VR0NPF3VhakeaOvt5Va9lRsEJaCeik8m4NOBoazIfZ3Q9ZdbZQhtfLhQQAeTbNrW6QazWd7Gpe8riK0NtLIRFGpsFagnyi1NCUoXi2Tuhi6hWY8xH90qs0rJjrYmppaEB1SSQ4Wrm6QOHlqmmnnJZoP5ORzYhj/wC6Y9q6XGO815BTVkbjWQcFAAoAFAAoApfdcd5DY5T36ubFV5nkGraCvVj5ooxMM9CcOqf2KHH2giSRlkAW669LY+fT7Pq03eJyTgGH4ndUdSEr6qRxSLaGMr0nlkyEl7JTIhKkDMOoUqS5M9DhcXGS94YLZdbTlcSoEdNWxudujNHWVkaGmlDMegwWLysfNKvTU1Y7sqiqQGWLxf6ZCb6c7rFWSjdHBxVGzuSXc+xRMWW7gktV48oZmFHQBfx/Cs1SLy5luvscevB2zLdDfHIKsNxt9gpyodPKI7d4896iMr6ozyWeBFTo5DSXRqM1jpuorRujlyg4TZHSJDQw5hlMfK8lxZW8fnjgB5NfPVME07s0WTihgo3GlWtEoDC8q7GljuE1dD2WELZBBpqiVrmendSIkqsu/RWZOzNyV0SCFJkMhJNlDca0d5XMrThK4gbglKt9KixdUHOZbeS6eaOacgNvVSzpp6jxm4sbmG+SUqaIAsfF4GqZOxpi1LUbriPAA8kuxvaw31TJoaw3ICbi27pFLck2X8m03nY+f/rY9q6x4l3mvIaOxulZxgUACgAUACgCjd2j/YKT/vMf/NTVuH/Wh5r7ha+hhzSlDcK9LJWKp4MlcPmqaPNUQeo1TmaObiezac1qi14djTiUpDhCk9dMrSOFUwksO/deg4md4zUEhISojop4po3YTFSWjKrPgBhd0HMKsuejoVxFi9xrVsWdvDYrkPykPNEGnNc7TRWsRjKbV8mbKbVmbUDqk1XJWd0cmtTyssE7FEbQ4GzMWQMQhWDybeMOn+PxrOoKPd2f40c/LllbkxxCYZnYa4g2AcTv6DUymUVaFyq43FlM4NHU8hsMolLQgjxrka9nNNZ2oqo0tyiEZKGpBjdTpkBFDjQxkwFxVrX0pZS0DKhs4o34VQy6KVgzLqkEU8ZOJEoqSHnKJkJsdFjjVt1LbcoyumzrLpZISshB052W96rbZdFxeqHzE9NtV7ulQpJRzeY2q1QlKkg3KlqAOuihVDp2LFK5Ey30LUcqkrJ+dlt2Cky2GNb/ACbf59tB+7Y9q6xV++PHY3WqSQUACgAUACgCkd2IZtiHh0y4w/xk1dh/1oea+49LvrzMbVEP0a9Y4XOvOmkGRHPRVEqaObWihdClNDTSphS1OJi4w1uHRKWnW4rVwjgZbSuhZM9tQIet56HQ6G+hiZw0Y3U42HMzRHnqtwynbw+JF0vptcaGjNY7VHE9SMnrC81zSymX1cs0QffDkKUXmN9rLH0hWaU8rvyOVUTiyVwvFeRCmk/ozzkDq6KRuxCs9xfFxDnYGy81NcM3lyFRieahNjz/AC6JHbUKblJq2nUyVqet0V2JEek5ilIQlJstS9AD0eXqqYpydluU5WWBnAsNRhyZAlSp0gry8gyzkT7bn1dtMoSjL3tvAtjRurkwcIgwYMeXOwyJg7N//PrLr7g4WTodejLVClSW7b8h3BLS9vqR7u38KJnbw7AsMkX0DsiGkDsTqT2keSs84xm+nqMrJaFTxjHJGLupXKbitJTuRHjoaT6hUxUY6IV3ZHg8KsTsIxdt0qIbUL3NhT577lbp80HDDpWOSSQq+ljrekckMk+YZ9t+Pq6dxsbKBKT0XB30vEjLQl07aobOuuuCwfcUniCsn8aRxQ6k+Zrn5Nv8/wBoP3bHtXXPxPfLo7G6VQSCgAUACgAUAUvuuG2xyj/XYv8AnJq/Dfrw819yYvK0zMXXEDgnzV7XhXLKmO8Rk7KCToBSvDnMr49CJk5jqkW66dUbHHr1pVGKoktAC6B5qbhsxuEhZMiCoWcZA67VDjJbFbp1VsxVsYMdLDyZik1lrOouRooYjE0XqroPIw6C4m7EpaOgOJ/EVzp4mcO8j0WHxlOUehCz8OktpKkkOJ6Um9IsTCR04Ygr8r6CwQb0zkmLOSkIRylCi2s5QTdJ6DSN2WhSmSMdpSSXpKciBolAPjnq6uumoU5VPevaPX+gvd2RMtQ3H2EyJQSywBdCToEp6h+PtrZLLFa6RKo1abm4R1aGze2j+EByPgCEl1zmmQpOY+RN9/8AGlYMRWjUSjBWREoKU1KXL0ISXFmTX1TMTkOiSs89Tys6u2+7yHdRChdXSsQ282V6lgwHZxBZM17Dme9U6mXiDhQ1b1A9gNNKFKn+o/kPCS5K4vjO1mEYdhjmHYAy09KdSUuTG2A0hsbiEaZlaXF9B5azzknL3Y2RZKpdaKxn/NJ05tQnYpdwwukgkZgDu6am5CsHS+lKrlhu3QRpRfxGFHpiSlQYaDWfVQSTYW6Nd3VwpbO+rJ0Gri1LIKjew0vSvQlbGxfk2/z7aD92x7V1hxHfHRutUkgoAFAAoAFAFI7sS8mw76/oyoyv8ZNaMGr4imvFfcSo7QdjGF4q3c8y/bX0B5I7yPP8OvPmFGKD+jjpV2VRPEU11YvsMub+oVWJPEaMIA601V7SuUWT7FFby+o1dnvH5qEnyVVLFVdlEtjhqa5iSX3Vmyn2UD7RNUyrVRnTpx2TY6jRnZalNx5LDq0pKghINyBvqqWInzQsYX+FjVDzjZzMSmx05HbVTOae6L4SlHTX0HffuKMlQU2FlJIUNyh5bVjlGlLmbIOXQj5eJoe5r7JQRxOtUum491l9x3gODt4i6tS1BWRGdEcC6negDo+FX0Yym7y2C93ZblrlMwtmIrc3aPkl4kEARMNZsotg7lLN7Afxrup54u7tTWn5sX5lCLjHd8ymyXcRx1xyTPe73ig3ykG3G2UcTvpFGrWd1/wywjCjG0VZE9B2eRAwQYlKdaw1DyrNvSfHUi2pSN5J0tbrrQpUcPKz1YjzzV0Ew2WwhV8AwtLyk/8AqWJ2Cb8cje7f1k+SleJqVnljp4Lf1Jhh0t9fsMMRdkYjPtiEteJP5SS66nK01u0SB/8Akabqejg5uWTa5ZKKWsmQWNvtuuIjMrQER7jmoAClHedPN2VnxEaam4U9l+MVSlu0RikKG9N+tOtZ9VuNdPmBKkjS57am5Di+h0qSeI89RcLNBVBPAiglXCVAxsv5Nv8APtoP3bHtXWLEd8dG61SSCgAUACgAUAUjuxBKtiHwu+Qyo2a2+3LJq/Cq9eC8V9xKmbI8urMVkLgMCzUXP0Fxd69u1Cn3jmwweMq6zllXgNHJTtrnkmk8N1V8a+2hM8FGGl8zGhxJpKspW490hCf49lVTxUVKw1PBxaFHJEhxF2IGRB+e8r/SknUb2XqN7LGO7sRsouki77XkQL1iqS01kOlFbI7hkh6DPZlNpdcU2q9soSFDiL8KzOS3Q+dLey+ZbsS2cY2la78wjKZqk5g1okSOr7Lg6OPrJVyuOePzRZKceX5+fUcbOvwsdimLtAw4qZDUGXF6pfQkC182+4Isb310IopxVaGRaNfn56mepW4LvPu/Yi5eEREygnDJsrELqshiRFyqCeBKgo5uwC/VT0sFUcvfsLLFQa90kYuLs4AgQMHUmZjbg+UfAzNxzbhwUobr7k7taqrVJTlkjstPP85FtOOWN5Efh+Auzpb06U8l50HPImPrs03ffcnef4savVCNKOat6cyp13N5aZJs4xh8ZK2MEER5baszuLYgQlCVW/o29SeonzVTVxE5u0dF0W5ojTVveILEcZgcsuVIfexjESbGVIHNHUlG4Do6Oiq4xpx3V/t/0ZXC4LN79mOYhiiAqJHSL8oSrlFHxUC3DybgOsVfSqVZytHRLp+fIsjG7sPcUCMPwJEyUq8qWrO0kDLlbI0NuF7i3UK3yxTowk/l8/8AhmqZpV8q7iXq/wDhTSzmGYuoBP0rpvXGy3d8xZxLO1gcgseKR/YUKdNojPFgHKDRSAeypFeXkztr72x5qWxF7bMBSPoCoZKk+oQhP0RQNdmxfk4ACbj9v1bHtXWDE9/0LobG5VSMCgAUACgAUAUTu1kjufyyN/Lx7f3qatoSyVYyXJolJvRGAJblvm6VBrjm3ke6vSQp4rEPNbTxCpw6S/2VEvDcUbhRUq55ckr6t3aavcKdPSc7vojHPGU49yHzl/QuHVNDK0htnqbRc+c1U8Qo9xZTNLGVJ8/4Q0ezLVmWCpX0nFXrLOrKW4ifj6CC8w8VRPkFqobY6s9xq4XDupNS6OVHYcudCe5WM+42v7J324EbqMkixOBLHaic/NZmzGWFymzZchKSlbyLapVbf5d9RFShLMt0RVjGpBw6lnnTTI2fmzMGZLQWkJC2zz0sX54H2hpfdxrdiZ8SgnF89TnYGhKlWlCbvpoI7ORMJlR0s4ZKjpTcF1l4kPOdR3X7OwUYeph6atG+bqyMRx8+asrx8P63Gm0kLGsTfbjsyWlMtX5CElHJZP7OoJ671TWwuJTc373idPDSpVaa4L0KxJwDF2lEO4ZJzDeW2s486bis7v8AEmvkXuEo7oXg7K4w/d12IuLFSLuPyUltAHbqfIKWMZOVo6iSnFK7LBGhxltIhn5GJHBIW6LBa9DdR4Ei+nCurRhGEE38yZSUVZPUjJuMOTpBE1PLNtcxtK72Skbgm24WpHlnK8VbwMU6doqMZNW2Csw8Mkfon3Yrh+aRcX/aT+KaSVGL5GedTEw3ipL85P8AsDuCSVaxlx5ielKUrPq19VUvD9GEMbC9pJr1X3GD0J1pRDuHp7CpJpOC0aY14y7s/sxqrvdJsuG4nyPH8RS8Jlq4j1UvoLMQxINmMPlq/ZUT+FMqMugk6uRe9NEg1s1KcTmXDLKOl54Cp4cV3mZZdoU1op38kah3B4aYOL44ylaFnkI6iUG+uZzj2VzsXbiK3Q34SrxYZvE2aspqBQAKABQAKAKN3aP9gpW4/wAoj7/3qauw8staEujX3Equ0H5GH8iVpKnlXCdybWTXpa2JqVXab0OEnpeIkt5CU5eURboFU3jyIUJPkN3JqE6ZheozJF0aDY0dlrVuF6rlIvjRSG5kK4ik0LOGjgkH6NQrE8NCzchB8dNWKRVKm+Q4Slh3cQDTWiytucSSwmRMwh8PwlhSD47ahdCvKKnhNbcyY4lJptbEXj7cJ2Up+AwthtznKjK1DSuISeKejiN3C9ZuE1ozZGrGTvETh49iMIhBe5ZobmpADibeQ0KU4qydgnRpTeZxVyxM7aIcbtLwptwlOUqZkKbI3brhQG7gBTrEVktdRI0p392o19RY7UbOpaacVhE1Utskcqp1Ngm27Q37adYyebVWQ/CxGS2f52/PUruNYo9iKQhLbbMVOoaQd3lPEcaWrWnO1+70Cjho0ldO76sbwXFghtSAtA+arenyVtoxuvASrG5Yo0FiShK1tZknUEGyvPWiWmhTSw9STupCjuBtvqBizAF/QkIv/wAwqlu/I2LCu2og9ExiHzQh3L0tvEjzGq3BspngafOI2M7FEaco+gjipCVfgKjhSM8sJR5xf1DCbPdGV3EHwDw8X2Gh0ocyl4ahHVQ+h3vWM6cz8taj1qvQ6dGKFdVx7kfoaR3C2mWcYxxEdWZHIRzfru5XFx+VVdOn8s6eDnKdO8upsdYTWCgAUACgAUAUTu138H8y2/l4/wDmpqyj+pHzQlTuPyMCbZWtDhVc6fiK9G4anMVSMVoKs4epSFLKL5SOHT/HrpuGV8ZIUTCc1tlSLbgjSp4RCxXQRVAKlZS2FXPzRY0kqVtS6FfO7DByLlUQDe3EUmQfiCRYI6arcRlM4E2NKS2GAtUisdRZTjJ0Vp108ZtFNSlGRMtqjYk1kWAh3pq9ONRamCSqUJXWqGeLRHY2DtRVQk5EyVLEsEc66fE3bhv38T1WyToZJto6tDExqUyBSMp0osaIvUdNoS8LCwVxHTU5UzbStzOtN5SBbmcfs0sI5X4Fjo80K8kYq21E/JkXSobh8PZW2k3Sl4My1aVix4dNbSjKvhr5a6ORTV4mXj8J3JluXDXl5eOHhbeg5V+41mnTktjVDH0pbsnsMkYItOQSlIJ/o3xasdRzXI1QfF7ruGn4dgz6CUBN+lpVqrVSXNG2n2fOe5U8QwhlvMWHgR0KT+NNxIc0W/8AiznsyKVh677knsoVSn1Kqn+PVVyZofcNZLGMY2ggD+Txzp+05XJ7QadVW6fyznVcJLCz4cvP+DYawlYKABQAKABQBSO7InPsLIT0yYw/xk1dh9a0fNFVd2pSfg/sZHHggMuDLvt7a9VlSep5iVfRjlmMGlabyLGn0MyryWwutsBBs2QPsilLuJLoRUxRykFJ89qWUOZdCo2iDfIudKzzlY2QuMnHBwqm5fGI3UrWlLkjtyalIg7lUd26jKwuhzGLiFApp4xkU1MrLiyw7KwFl19aVMreUlKLahVtT6qvhNSqOLWtjBXhOlBTT0vsVLGMMVEWVJHMvSVaWXVG3CYpVFZ7kahRSq4OvTVB1YTJJHyjfLti6k6Op/GrLZlmR0Kc00P2QhbaWXiORd8VZ/o1cDV9JqyjLZ/QK0Lq/ISjx3I8lcV0c5CtL7v9DvFbKGaF1zOBi0h662Rqm4V0dFPUlzOYpWdmJCQdyzr11SqkZaMti5R1izvL5fnFPWDVNSlGR1cJ2pXp6XDKkyAOasLT11hqUXb3WenwfbE9MyOIxBY/SC1cydGpFnpaHa8WtTSO4i6HsZxtY+rxx/zOVlne+p5nt6qquLUl+1fdmvUhxQUACgAUACgCkd2JQRsO+o7kyoxP98mraDtVj5oqrq9Ga8GY0rF0JS5a27dfrr07qannIYNtMQOP5bgISfLRxPEsWD02Dt44XLJKjboNSppkPDyigyll8k9NaVqiq2UjJbBAOlU1aD3NdKZFOpN7DfXPlE2xYipK0nUUiLU0dbcsasjMWUbj1h4DeKvUjPODJKM7HURmFqtTRkqQmtiXimOLFJF6dNGCop8xxLQ0+yUkiplZoqpSlCVymYjEMd1RT4t/NWKpCx6PC18y1O4ZISzISFC6FaKopyszpwnbUlSyIz5irPyLozNK6OqrWkm11NEK6asSERhc/D+WSPloN0L+03wHZwrXGp/rjJ7/AJf1PO4+uqNZU592YplC0qFuda46xUVJM5s7pkTMasaxSdzTSlcZcspBynUU0ZtGnInqdQ/rzDbqolZmijUlTYul2454BFZ5nfw+JUlZmm9wjL+dMcyDTkY/tXXIxa/2fJFeLadRW6GyVmMwKABQAKABQBQ+7abdz2b++Y/zU09L9RNizV4tHnhLjeVQU4k5vtjpvXoM9Nu+ZGFJrkJqcatotP3hUOpD9yDK+gZp9CVD5RPnqVVh1QsqcrbE3Bnx0jnPt9qhWyniKSWskc6th6j2THEiXCWiwfZuftirHi6Nu8imFGsn3WQUhxnPmQ63b9oVzqtanJ6NHThGdrNCsaRDWMry0jruKrjUgt2JUp1VrFDzvDDH03RMZSetYFXqVB/Eijj4iD1g/QZyMNQz+jlx1jqdFQ40lqpr1NEMRKW8X6DMPpbNlOo7FCq+Ko/Ei/ht7IXanpSLh1I/tU8cRB7srlh2+Q7bxMW/To+8Ks4tN/EvUzywr6DaXKQ4mxcQT+0KqnUh+5epdToyjyI8OIBuFp89VcSPU2xzLkTb0tmVgyAX2w+ybp5wvatUqtOVO+ZXMyq1Y1bWdia7m2LRm5UtqdIaabcQNXFgAkW6fLVUK0eHbNzOV/kWHq1acJwTbT5I66/DYlPNCYwpLbikIUHAQU7x6q1KvTlFXkhOHWnTjPK7ta6DKe/EV4slk+RYrJKpC+6LaVOovhZDvOM30ebPkUKVVodTdCM+ggpxoH9Ij7wqxVIdUWqMugZqQ2DYuJt+0KiU6f7kaaMpxexrXcBUleI44pKgRyTA0PWuuPjHGVT3TZKWZ3NnrKKCgAUACgAGgChd2ssK2ClsPuhvlXWgkZgCqywTYHfoCaAPNzkFkKs0pRSBvUq34UE3ODD7/OR974UEBUxGFISoLVYijQAGIwBvPbQFznerPC56rUJBc53u1uBPkvRYLgMZsEjUW6alqwXCmMgb7266AuDvdu2axy9NjRayuRceMTpUeOhll8hpAVZNhpm31GhNxF1annVOrWStQsogWvrf20ECZaTuubUE3CmO3ca3vQB3vZrr89AXAI7R4mgLnRGa6daAudEVnio1BNwwiMH55qQzBkwovFxQoIuc7wTqUq5tza6vhRoSdTCbzJCzZN9SlWvsoINk/J+RDizcXbZkBS3W2yELICjlJvYcRqPPQBtIN6AO0ACgAUAQu1W0uH7MYUudiTlhqltpPjOq+ikUAeadqtpcS2rxZc/EVBNrpZYT4rKPojpO6542poq5DIptpITmWAegGnyX0RF7DR8gKCQcubf1VORENh3EfJJWh3MTwJHssKunSTSad/zyFUtQqOcoKWbWPzTY0sYRuDkHcQFBQ5hCTcncr1+6ncU1pb+SFLUISCpISQvNwWNQfLoKV2b0+oyCNkZAkKSSm4soXHsqE01ZsBXIAohRy31ACgR5tfbTaLfT88hWwjm9Llk5UncjTXtpef8ARKAoLcORBSo78/i+21Q1m21+n3G8zuZSkjy2AUNR26UPVWIvYMElvmqOo8a/OB83vqVG24ZrhLKQc+iUrOlrG2vRvqMrXgSncIVc5JIGW1iAqx8tJZXTAVczLavmT033adFO1dEDiGyl9YRyiUpGgzC/r09dPFJqxVVnKCukFcbSlRAI37s2bzWoyqKJU27CCxlKlJUcx4gj2WqvKlt9x1IMEKDWZTiQSBrVippK5NxBCvlMpWCFHeeFUuKvuTckWmEOoCbBLid1uNLlsMg8KVKwyYzMhPKZksqzNuJ3pP8AGnbSsD0T3ONvY+1kIMScjGLMp+VZB0cA+ejq6Rw9dKSXYUAdoAjMdxiNgsBcqTdVvEbTvWej40Aec9tcYm7Q4oZuIL5wBS20k81pPQn8TxqQK0lFlaU0RWLBNaUitsKGAOKvOabVbMU4IzY+b13vUWQXDckm4PONulRqd9xTjly3kzLyfQzWF/JTupK1r6DJeA3DYK+IFrHUis97bMsFu92Neaq1+k1FybHRGY4JP3jRdkNI73rH+hftNSFhREZnoV940yfiRZC4iR8tylX3jRd9QaQRUWNbxFfeNF2RlQ3XFj38Q+c0rGSSDJjsg7lC+pso76lO2zGshVEdgACytN3ONSm1qgsOYiEpQQSu26xUbVdFu2rMtWF2hFTCEqJSmx6qh6bD7hOQQDmsc3E3tVbdncsSAWmjbMCba76iUnJWbHUUjgYYAsE+ukvYZJBghtPiixFKx8qEnwF76raFasK4Y6/CnMS4bqmpDK87biDYpNQQejNhNrk7RwUolANYg2n5RA8Vf2k+7hRYC1dlQBgO2+1eOMTVJ2hwoxFOCzYWVBI6kqtZXDdU3AocnFm3zclAt0G9FwGZlNZr501KlYAwmtDiDVnG8BHC4O/2urz1PG8COGgfnBr+DRxvAOGjhxBro9fwo43gHDCGY0eHr+FQ63gSoIL3011/e+FK6g1gCU0PpHt+FGcLBhMa+ifP8KOIFgwntdHr+FHEIsGGIsjo8/wo4jDKKfnRq1vx+FTxGGUIcSaP+vwo4jDKc7/Zym979R09lRxGTYL3+39H1/CjiBY6MRb+j6/hRxAFE4q2kWyjtV8KdVrchXBMBxVo/MT974UOu+hCpoH5zb+gn73wpXVfQdIBxFs8AP7XwqOJ4Ehe/wBvq+9Q6jJTsd7/AGvpJqM5OY4ZTCj+mTStkMValsoN+VT56CCx7N7RykTWWcJZ5eWpQyJbClq7AkXqbgbHGx/bVUdou7KscoUDNmlgG9tbilAukqKxMYUxLZbeZULKbcSFJV5QaAMw2t7luypxXCVMQ3YqZk3knm2HSlJTkUrQG9tUjdQA98DOx31eZ6UqgAeBjY76vM9JVQAPAvsb9XmekqoAHgY2N+rzPSVUADwL7G/V5npKqAB4GNjvq8z0lVAHPAxsd+omekqoA74GNjv1Ez0pVAA8DGx36iZ6UqgAeBjY36vM9JVQBw9xjY6xsxMHX3yaAKi73JMAQ4tAmYnZKiB8o3wP7FAFlwzuM7JKgtKeTOeWRcrXIsTfX5oA9VADrwL7G/V5npKqAB4GNjv1Ez0pVAA8DGx36iZ6SqgAeBfY76vM9JVQAPAxsb9XmekqoAHgY2N+rzPSVUADwMbG/V5npKqAB4GNjvq8z0lVAA8C+xv1aX6SqgAeBjY79RM9KVQBFHuTbKt7XxIfIylRVwnHlNKkGxUlaANd+5R0vQBpuEYLhmCR+98JgsRGuIaQBfynj20AP+2gD//Z" },
-      { id: 2, name: "Laptop Lenovo ThinkPad X1", price: 16500000, category: "Laptop", rating: 4.7, stock: 8, image_url: "https://tse1.mm.bing.net/th/id/OIP.EfZB3zdvE6jA998epUaQlwHaEK?pid=Api&P=0&h=180"},
-      { id: 3, name: "Smartphone Samsung Galaxy S24", price: 12999000, category: "Smartphone", rating: 4.9, stock: 15, image_url: "data:image/jpeg;base64,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" },
-      { id: 4, name: "Smartphone iPhone 15 Pro", price: 21999000, category: "Smartphone", rating: 4.9, stock: 12, image_url: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBxITEhMSDxMVFhUVFxYVFRAQFRUWFRAXFRUXFxUVFRUYHSggGBolHRUWIjEhJSkrLi4uFx8zODMtNygtLisBCgoKDg0OFxAQFysdHR0tLS0tKy0tLS0rKystLSstLSstLS0tLSsrLS0tLS0tLS0tLS03Ky0tLS0rKy03Nzc3K//AABEIALcBEwMBIgACEQEDEQH/xAAcAAABBQEBAQAAAAAAAAAAAAAAAwQFBgcCAQj/xABTEAABAwICBAkGCQcJBwUAAAABAAIDBBEFIQYSMUEHEyJRYXGBkbEycqGys8EUIzNCUnSCktE0VGJkosLSFyRzg5O04fDxFUNVY5TD0xYlNURT/8QAGAEBAQEBAQAAAAAAAAAAAAAAAAECAwT/xAAcEQEBAQACAwEAAAAAAAAAAAAAARECMQMhQRL/2gAMAwEAAhEDEQA/ANsQhCAQhCAQhCAQhCAQhCAQhCAQhCAQhCAQhCAQhCAQhCAQhCAQhCAQhCAQhCAQhCAQhCAQhCAQhCAQhehBDYxjgi1gwxlzQSQ52YtzMGZ7SO1USXhKlY/lGK30Sx3uNx2lUbAq97/h0zzd0ltv/Mm1z4BM9JQ2MO1D8ZaNrBubrhxc630rNNkGxYVwjwSeWwjpicHjrLTYj0qy0OPU0vyczLn5rjqu+66xK+UqKqeJNSU3vscdoI6VcqCnqeINQ12tG02LHHWJG8g7u/sQfRqRlltkCL8x/BYlQaR1MQBgme0fQvrNH2TdvoVs0FE2tPJO8uc7VzP6WuTbtAUtVeXVdjbWueYNuB70oysH+hz7jZUThUx19HR2pjqzSvbG1+3U1mucXW57McB1qi8F+m1T8LbR1sjpWTXDHyZuY8AkDW2kGxGfQnsb2Jm89ug5eKUUDUSlmY2bxuzTTEMQdGwvjcW2F7DZ3HJNQ8xrHxEHCMxksBLtZ1yLG3kNz2m1yQqO7hLlY7luit9Esd4tOXaqJo1WPMNW+VxL5DCC47Trukc/0gJnpMGx64YfjLsY3fqAt1nut9I5AFd5xkmsbdbPhXCLTyW12kdMTg8dZGRHpVkoccppfk5mEn5pOq77rrFfKNDVPD9SQ3O528Ebrq50UNSIPhGtrRg2LXG5tz33d/Ys/mVdsfRiZ1VXq31S3Lbc36NgWNUmklTCAYZntG5hOs0dGq64U5oc+URzmZ5c97oxdx3HXv7lz8kvFrj7XT/bjgfKb1Fp9yeU+NMdtH3SD3jIhZnwpYmaaEMpnETPe2MOH+7bqFznAbNY2Avuuqpwe6VTGf4LVvL9YExyP8prmi5bfeCAdvN3Zm5rVfQkVZG7Y4X5jke4pwqLK17WB5N28xN7X6UlUYtLE0mN7hYEgbRkPonJP0mLNpFj8dJBLPIW6sTbu3uJvYNa2+0kgC52kLM6fhWxFz8qKEtOYi4xwkA6X2tfsUbUMkNLqTOLjLV0wOtncN4yQjvaExpqgMkeN97e5TWpGjUXCpTf/dgqKY73vZxkX9pHfLrAVtwnH6WpF6Woil6I3tJHW3aFjGL4lI2nldB8oG8nK5vvNt5AuexZ7FpQCQamnhlcLHjWXgmuN/GR/grLU5SR9drxYLojpPVSMLqGtnYGEA09aG1DBcXFnGzw3bbPcVd8M0/qIyP9pQR8XsdWUjnFkf6UkLhrNbzlpdbO6un5rQ0LxrgQCDcHMEZgg7CCvVWQhCEAhCEAhCEAhCEHzVgx+KnvzR26OUb2UXpG1zql4G8Mtc2Ac1otnuyLh2qSwn5Kbqj8SkNIIOVLI/JjAy53klo1WtG8lX6K04u1w57S3V2lwIudw6exTtBpBLBG6MOaGzDWDXhxc24trttk24HzuYHrgI3MNywbPmutlmDcW283alK+USzOfcDJhY21rt1RYDK2QQXGnd8Ww87R6CW/urY8Kj1Wv62+DlhOAzExWPzTYdA227yVvlLkx3W3wcs1YrXCXo3NVNdxVrgBzATblx31Rc7LtdI2/O4cyzHQnA6h+IwPkikjbC/Xe6Vpb5N8hfyjfmW56X4zDR00lRUC7G2GoM3Pc42a1o3kqpaGaZ0NUJWww8VM1usI3BvLAO1pG2xt3pKJHSPS+lp5GRSzta54uGuDjqtvYOJGTAdxclMUlvASDcFuRGwjVWIaay8biFTI4gEmNzGnex0bS0DdkLZf4q/6D1Tn4WQ434t0jGk/RAu0dl7diYis4R8jKTt14LHm+Uvb0KH0ga41UoG8hzbm2bW2tfdcOPbZS+F/Iy+dB++mWkVPyppXjkNcATvc5wya0d+a9F6c1ee86+u8Ftr+ULXJ3dKnKLH5YYjBrNDJhrBrw4uYHC122ybrDn61X4yzNzRstyXWyF93OEtXS8bNLIXAXILW87SMrbrAW71jqNdrsx12MPO1h/ZAPgtEw6BrWOIA+Ujz3/O3rJ8BlJiAJ8l2qOrIgela7CLRu/pI/wB5Y8t3GuExWOEfBpZ3v4vNwIey5Au5gI1bnZrNe4DpDVRtFsPlFYyaaN8bYrkmRpbrOIIDQDtOd8ubpC1XTivjgjkmqG3jDg0Da6RztjWjsOZ2WVLwDGqaYPMEeq9g1jE+17De2xsRe3VlzhYluKsNZpfFERBLK1pkAcGvDrtB2EkZMBH0lI4k+7Otoz57tWMaSSGWtqpXuF3SazR9JjhdlugN1O9aDojVOfQx65vq6zAT9FpOr3DLsUs9ESuK07Q2mAAF6yHP+qmVGx+QxVUzeZ59OY8QtBxofkn12H2UyrPCnhJD2VLBk4aj7bnDySesZdik7a+GtC8PsY5GbPIc6zxl1Z53/wBM0vNhzJfloGuzsXFoJGz5zcxtG9V/BYoOKdNUukDeMbC3itXkktLi92ttAA2DPapiKOpilEd3Xc90bCDlI5jg0kDO3zdu6ythqT0fooaYn4O3V1iCbnW2Xt5V8hn3qzxVQcHAtBLrDWIzbYnZY2N7m9wq/wAfO0vbIwO4st15A0ODb2I5QysRbvTqmqgSSBa52cyxXSNB4PpD8E4om/weSSFvQwHXib9mN7G/ZVlVR4N3Xjqz+tH+7Uyty6zpxvYQhCqBCEIBCEIBCEIPmfD8oZuqM9xKidJcQMhc0eSBE4jnDbg+l47lO4MLskB3hv7yhK/DnsfrMAcP0gSLHcQn0QjmsEo4sktN9osbWO3M7krJCMhY3bezgdxOwjmuT3rqOlIOTQPNJPYMzZKRwnjL9HarosNBAGQx22ubrG/PruHg0Ldqcch3Z6rlh9+QwD5rQPefSSt3w5t7g7yPVes1YzThqmfJCALlkb45TbmGux/cZY1nuhQAxSl4gkgyEcxLS12sCLn5vgt8xTCL6zXNa5rgRaRus0hwIII6QSO1QWiuhFNSSmZjGh9iAQXuDQdurrONk30IXTTQuCeVnF8mRoJ5D262o5xI1oyPJuXWO65GakqbCmU1FxMd7BpJJNyS4XJJTbENFZhjHw9j28U5vKFzrgiLi9TVtm02Dr35+hTeMttC7zT4IMpojaCU8zoT3CRQ+kmIGRzh80OY4jnFiCe8jvVgwpoMUoOwmPwkUDX4a9jy5oDgQRygSLHcQF6L05RCuY3jSIyS3PMixtY2uLnoSjoRyQGm7R5QO0bgQuo6VwPkgeaS735JWCI65PRs9CxjWrLRU4ZFEB85rXG/O7atUebROPM9h7g5ZiXZRgbGtY3r1QAT33WrRNBY8HYXAfsuWPL3GuHTPeFqrMrW5HUZIx5A5nB7Cewln3wqZokLYhEIiS064OVrtLHbRc/o79q1XEMKcdYEMc1wItICWkEWINuj/OQURgOjDKd5exjQTldjnPy5gSTYLEvrFxE47ozHNINUFr2CxLHtJLT5IcwjK2djzZZ2VngoGwQRxMGQaDz3JzJPaoanwCRuJSVQe3i3tzF+VcsDdQjmuAb9AVkxJw3bAAB2CylVzjbbfBemti7PipR7lKYrTsljdHILtcLEf53qK0jdlTdFZD7GRPZ6lY5N8WbGhfRyyRGSNoeWljqlodC9rT5ViMpWXBCWixKnfPPMJ9R8glbGZGP1YiS1jZNZoOZZrHoJzVrxehjqIzHJ1tcNrDzhZfi2GSU0hZJ1tcNjxzj8FvjdZ5TGhVVS5r6yMvBZxMbw1puAS6naSR9Lk79xHOm1DPsVNo8RkGtyydcBry43LmgggEnP5re5TuGVOxSwla9wWuvDVH9aP92p1c1SeCg3p6r607+706uy3Omb2EIQqgQhCAQhCAQhCD5vwh3IcP0W+L0tdNcIPJf5rPF6cXSkeSQtPlNB6wm5oo731R7u5OLrlxUUhOVvGFHlfd9WRYJOVvOFeX2M9WVSiXKQkp2na0JZcuQR81K0bvSq7pH8m/qPgrPUKr6SH4t/UfBBl+FP+Lf0CP8A7qWum2EnkP8A6vwkS116q5R5JAx3lNB6wkPgUYNw3/BOLrlxUUjIcx1jxWrUruS/zm+o5ZNIcx1jxWrUhyf5zPUK4eX43wKkpKSJp2gLolckrk0ayQN227yfBR1eclKSlRFeclR7pN5NP01kRHR8VIPckKyeyW0hz+Dj9ch9jImuKMsopt8MXFdBHURmOXsdvadxBUZPLZcMqypjWqtXUL6eQsf1tcNjxzhP6Ca1lNYjE2oj1D5QzY7mPN1FVWkkLTquyIytzWW+4xZjeeB116WoP6072ECviz7gTN6Kf60/2MC0FajIQhCoEIQgEIQgEIQg+Z8HPJk6mfvJzdNMHPJf1N96cXSkdXScr7D3L26bYibOFvohRRMVvWEDlE85b6GPyH+d6+f2nkjO6+gMIOfaPVepRMLhxXpXDygaVb7D3KraSH4t/UfBWDFTZ+XMFWMfPxLvNPggzLCDyJOuPwenN00wk8h/WzwenF16a5OrpKV9guiU0xA2ebcw8FFdyHMdY8VqtJ5Lzzub6jh7lkjDk25vszWs0h5LvOb6r1x8ncb4lSVy4rwlcOKw0RqH2Ci685J3ihs9wHMPAKOqTyRfPJA7xdudL01kV/7KUe4LrGYdq8xHN9H9ci9lMnWPDaoKJXCxKjXyKSxE5lQszlQ9p6mxUdjcNpA8bHjPrG33IbIlKx2swdBUVsfAYf5jN9af7GFaIs74DPyGb60/2MK0RdGAhCEAhCEAhCEAhCEHzBgzuTJ9n3p0SmeDnKT7P7yckpR1dNawEkEDYAO5L3XDioGrAQ0X/wBFvmATFzn33Ot+y9YLKVumjR5Unn/uyJVixlcOK9K4cVBG4i0k3A3D0Kq6QAiF1+Y9iuFSVUdJz8W/qPggy3B3ciTrZ4PTolMsH8iTzmeD06JXorm6umdY1xdcDcPQnJK4cVFNogQGg847M1quHS3Y++6QD9l6yxxzHWPFabhR5En9IPVeuXk7jXE8JXDivC5cOcstGlcC5xNtw9Aso6ouGi6lJXKLrjkge1zuXSfXIvZTJzj79qYYq+xpT+uR+zlXGN1W1QVXEn5lQdQ9SOIzZlQk8isR0JE5gNwVF66l8Nju0lKrZ+A78hn+tP8AYwLQ1nnAh+RT/Wn+xgWhrUZCEIQCEIQCEIQCEIQfLmEHKT7PvTklNMKOT/s+9OCUo9JXDiglcOKBKUrddGTypPP/AHZFg8pW86OgBzrb3An7r1KsWEpN67KTeVA0qSqlpN8m/qPgrZUqpaTfJv6j4KjKsIPIk85vg9OiU0ws8l/WzwenBK7VzekrhxQSuHFRSbjmOseK03DDyJP6Qeq9Ze45jrHitPobBr7b3g/svXPn3GuJwSk3FBK4cVlonK5RdaVISlRlaUC2PyWbTnmqo/ZyqExir2p/pRLaGI81TH7OVVPE6q6kKaVU91HSvXUj0lYk2AuTsA2laRyzM2Vyjo+Kha13lEXPR0Jxo3ooYgJ6sWdtZEd36TvwXOM1dyVFabwJ/kdR9af7GBaCs84EHXopz+tP9jAtDWoyEIQgEIQgEIQgEIXqD5Vwt2T/ALPvTolMcKOTuz3p2SrR6Sk3FekrhxUCUhW76OO5Z6x6r1gshW5aLSXeez1XqVYtRSb12Um9QNKkqpaTH4t/UfBWupKqWkp+Lf1HwQZThTuS7rZ4PTolMMJdyXdbPB6eErvXN6Sk3FekrhxUUm45jrHitKoH8l3nN9V6zInMdY8VouFvu13nN9V65c+41xSBKTcUEpNxUaJylRlaclISlRtacigZ6Wyfzdh/WI/UlVKqZblWvS1/81b9Yj9SVN9B9Ffhj3STEtgjPKcNsjtuo07stp3JBG6O6M1FY60LbMHlSuyY3t3noC0jCdGqahbrD4yW3yr7ZH9Abh6VMz1scLBFA0MY0WDWgADs3lVTFMTJvmpurmEscxS981S8QqrlPMSqLqv1MqsiWt44BnXoJj+tSeyhWkLNOAD/AOOl+tSeyhWlrTIQhCAQhCAQhCAXq8XoQfJ2Gkcq1923tTwlJ4lhz6arqIXtI4uV7fshxLHdRaWnqK9urR6Sk3FekrhxUCUhWx6EzgykAk9Yt8x/SsbkWjaAukZNHM65jeBytw1gWgnmsXKVY1YlcPXRXD1AyqVU9Jfk3dRVtqAqxj8V2uQY5hThZ1r/ADdvU5PSVG0kLo3ua4GwNieokA+lP7rsw9JSbivSVw4qBMnMdY8Vf8FkGq+x+c3b5r1nshVz0dp5RyyCY3gEP3bwM/tLnza4p8lcOK9JXDio0SkKjqzYU/kKY1TbgoIPSNwNM0An8oj2+ZKrVgrhHT09O1xaCC+QssHaxaXbTlty6gqpiGGTNp3SOaSxjo5SQPmsdZx+64oxHES14ANwWtLXDYRYWseZQS9XiB3nrUJVVd96a/CHSGzA5x26rAXHpNgm81PN/wDlL/Zv/BXAjVzJPFsKdFHTyOexwqGF7RG4lzALcmQECxs4c+dxuSdTE8eW1zelzXC57QmoZmqje+AIf+3S/WpPZQrSlQuBKkLMMa8i3HSyyDpbcRtPbxd+1X1VAhCEAhCEAhCEAhCEFZ0t0RbV/GRlsc1tXjHND2vGwCRu/LLIjLnVG/khqN9RD2NkHjda+hBj54IKj84h7n/guTwP1H5xD3P/AAWxIQY2eBuo/OYu5/4KxaLaE11G10QqKeSF1zxUkbzqlwz1TuB3jPszvoSEEHTUFS0WcYXW360gPeWm6VNFPzRfff8AwKXQpgg34bOd0X33/wACY1Wjkzxa8X3n/wACtSFcGZ1PBtUEuLJoG617hzHPBuLZ3AyUZ/JFUb6iHsbIPG619Cu1MY+eCGo/OIe5/wCC5PA/UfnEPc/8FsSE2mMbdwOVH5zF3P8AwVi0a0Kr6WN0PwinkiOtaOSN51S7aA7c055c/MtCQpfaqP8A+ipTtdF9lzwPS0rk6ESfTZ9538CvSFMXVCdoLL9Nn33f+NJv4PpD/vGfed/AtBQmGqVh+ilVEx0Ylhcw3GpIHOAvtHkjJVit4Gdc3ZNxYzIjY8mNl9uq1zCWjovZa4hMNY/BwMSMOtHWvadmsx+qbc1xGl/5J6v/AInUf9RJ/AtZQqjIqjgenkAEuITPANwJZXPAOy4DmGxRQ8CUYe01FQ98d+Uxjg0v6C4MBA6lrqECdLTsjYyOJoaxjQ1jGiwY1osABzABKIQgEIQgEIQgEIQgEIQgEIQgEIQgEIQgEIQgEIQgEIQgEIQgEIQgEIQgEIQgEIQgEIQgEIQgEIQgEIQgEIQg/9k=" },
-      { id: 5, name: "Smartwatch Xiaomi Watch 2", price: 2499000, category: "Wearable", rating: 4.5, stock: 25, image_url: "data:image/jpeg;base64,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" },
-      { id: 6, name: "Headphone Sony WH-1000XM5", price: 5499000, category: "Aksesoris", rating: 4.8, stock: 20, image_url: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT2j1n9DGSu0zh7Zr0HwseZKeQTjgPCwClTwQ&s" },
-      { id: 7, name: "Smart TV LG 55 Inch 4K", price: 8499000, category: "Televisi", rating: 4.6, stock: 6, image_url: "https://tse3.mm.bing.net/th/id/OIP.0IT84wTsOHcCGaQVTzTeQAHaE6?pid=Api&P=0&h=180"},
-      { id: 8, name: "Kulkas Samsung Inverter", price: 5999000, category: "Peralatan Rumah", rating: 4.7, stock: 5, image_url: "data:image/jpeg;base64,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" },
-      { id: 9, name: "AC Daikin 1 PK Split", price: 5299000, category: "Peralatan Rumah", rating: 4.6, stock: 7, image_url: "data:image/jpeg;base64,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" },
-      { id: 10, name: "Kamera Canon EOS M50", price: 8799000, category: "Kamera", rating: 4.8, stock: 9, image_url: "data:image/jpeg;base64,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" },
-      { id: 11, name: "Drone DJI Mini 4", price: 11999000, category: "Drone", rating: 4.9, stock: 3, image_url: "data:image/jpeg;base64,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" },
-      { id: 12, name: "Speaker JBL Charge 5", price: 2299000, category: "Audio", rating: 4.7, stock: 18, image_url: "data:image/jpeg;base64,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" },
-      { id: 13, name: "Powerbank Anker 20000mAh", price: 899000, category: "Aksesoris", rating: 4.5, stock: 40, image_url: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSzaB1xODDTVBvghghmcWi8AezH43TfXOajtw&s" },
-      { id: 14, name: "Mouse Logitech MX Master 3S", price: 1599000, category: "Aksesoris", rating: 4.8, stock: 25, image_url: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSVCK4tqBKS8dqDxWd7JhOamCxqvlKluVHWEQ&s" }
-    ];
-
-    const mockCategories = [
-      { id: 0, name: "Semua", icon: "📦" },
-      { id: 1, name: "Laptop", icon: "💻" },
-      { id: 2, name: "Smartphone", icon: "📱" },
-      { id: 3, name: "Wearable", icon: "⌚" },
-      { id: 4, name: "Aksesoris", icon: "⌨️" },
-      { id: 5, name: "Televisi", icon: "📺" },
-      { id: 6, name: "Peralatan Rumah", icon: "🏠" },
-      { id: 7, name: "Kamera", icon: "📷" },
-      { id: 8, name: "Drone", icon: "🚁" },
-      { id: 9, name: "Audio", icon: "🎧" }
-    ];
-
-    setProducts(mockProducts);
-    setCategories(mockCategories);
-  };
-
   const handleLogout = () => {
     localStorage.removeItem("isLogin");
     localStorage.removeItem("token");
@@ -187,7 +197,18 @@ function DashboardPage({ setIsLogin }) {
     navigate("/login");
   };
 
+  // Fungsi untuk Customer (bisa beli)
   const handleBuy = (productId, productName) => {
+    if (isAdmin) {
+      alert("⚠️ Admin tidak dapat membeli produk. Gunakan akun customer untuk berbelanja.");
+      return;
+    }
+
+    if (isCashier && !cashierMode) {
+      alert("⚠️ Cashier harus mengaktifkan Mode Kasir terlebih dahulu!");
+      return;
+    }
+
     const productToBuy = products.find(p => p.id === productId);
     
     if (productToBuy.stock <= 0) {
@@ -241,79 +262,978 @@ function DashboardPage({ setIsLogin }) {
   };
 
   const handleCheckout = () => {
+    if (isAdmin) {
+      alert("⚠️ Admin tidak dapat melakukan checkout.");
+      return;
+    }
+
     if (cart.length === 0) {
       alert("Keranjang belanja masih kosong!");
       return;
     }
-
-    const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    alert(`✅ Checkout berhasil!\nTotal pembayaran: Rp ${total.toLocaleString()}\nTerima kasih telah berbelanja!`);
     
-    setCart([]);
+    setShowCart(false);
+    setShowCheckoutModal(true);
+    setSelectedPayment("");
   };
 
-  // Filter produk berdasarkan kategori yang dipilih
-  const filteredProducts = selectedCategory === "Semua" 
-    ? products 
-    : products.filter(product => product.category === selectedCategory);
+  // Fungsi untuk Cashier (melayani customer)
+  const handleCashierCheckout = () => {
+    if (!customerName) {
+      alert("❌ Harap isi nama customer!");
+      return;
+    }
+
+    if (cart.length === 0) {
+      alert("Keranjang belanja masih kosong!");
+      return;
+    }
+    
+    setShowCart(false);
+    setShowCheckoutModal(true);
+    setSelectedPayment("");
+  };
+
+  const processPayment = () => {
+    if (!selectedPayment) {
+      alert("❌ Silakan pilih metode pembayaran terlebih dahulu!");
+      return;
+    }
+
+    const paymentMethod = paymentMethods.find(m => m.id === selectedPayment);
+    const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const tax = total * 0.11; // PPN 11%
+    const adminFee = paymentMethod.adminFee || 0;
+    const shippingCost = total > 500000 ? 0 : 15000; // Gratis ongkir min belanja 500rb
+    const grandTotal = total + tax + shippingCost + adminFee;
+    
+    // Generate nomor invoice
+    const invoiceNumber = `INV/${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}/${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+    
+    // Generate nomor virtual account / payment code
+    let paymentCode = "";
+    if (paymentMethod.category === "Virtual Account") {
+      paymentCode = `880${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(new Date().getDate()).padStart(2, '0')}${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
+    } else if (paymentMethod.category === "E-Wallet") {
+      paymentCode = `0812${Math.floor(Math.random() * 100000000).toString().padStart(8, '0')}`;
+    } else if (paymentMethod.category === "Retail") {
+      paymentCode = `${paymentMethod.id === 'alfamart' ? 'AL' : 'IM'}${Date.now().toString().slice(-10)}`;
+    } else if (paymentMethod.category === "Tunai" || paymentMethod.category === "Debit") {
+      paymentCode = "CASH-" + Date.now().toString().slice(-8);
+    } else {
+      paymentCode = `4111-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+    }
+    
+    // Data struk
+    const receipt = {
+      invoiceNumber: invoiceNumber,
+      date: new Date().toLocaleString('id-ID', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      }),
+      customer: isCashier ? customerName : (user ? user.name || user.username : 'Guest'),
+      customerPhone: isCashier ? customerPhone : "-",
+      membership: user?.membership || 'Regular',
+      items: [...cart],
+      subtotal: total,
+      tax: tax,
+      adminFee: adminFee,
+      shippingCost: shippingCost,
+      total: grandTotal,
+      paymentMethod: paymentMethod.name,
+      paymentCategory: paymentMethod.category,
+      paymentIcon: paymentMethod.icon,
+      paymentCode: paymentCode,
+      paymentStatus: "LUNAS",
+      transactionId: `TRX-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      cashier: isCashier ? (user?.name || "Cashier") : "Online System",
+      storeAddress: "Jl. Teknologi No. 123, Jakarta",
+      storePhone: "(021) 1234-5678",
+      processedBy: isCashier ? "Cashier (Offline)" : "Customer (Online)"
+    };
+    
+    setReceiptData(receipt);
+    
+    // Simpan ke riwayat transaksi
+    setTransactionHistory(prev => [receipt, ...prev]);
+    
+    setShowCheckoutModal(false);
+    setShowReceipt(true);
+    
+    // Kosongkan keranjang setelah checkout berhasil
+    setCart([]);
+    
+    // Reset cashier mode
+    if (isCashier) {
+      setCustomerName("");
+      setCustomerPhone("");
+      setCashierMode(false);
+    }
+  };
+
+  const closeReceipt = () => {
+    setShowReceipt(false);
+    setReceiptData(null);
+  };
+
+  const printReceipt = () => {
+    const printContent = document.getElementById('receipt-content');
+    const printWindow = window.open('', '_blank');
+    
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Struk Pembayaran - Toko Elektronik Digital</title>
+          <style>
+            body { 
+              font-family: 'Courier New', monospace; 
+              padding: 20px; 
+              max-width: 400px; 
+              margin: 0 auto;
+              background: #fff;
+            }
+            .receipt { 
+              border: 2px dashed #333; 
+              padding: 20px;
+              background: white;
+            }
+            .header { 
+              text-align: center; 
+              margin-bottom: 20px;
+              border-bottom: 2px solid #333;
+              padding-bottom: 15px;
+            }
+            .store-name { 
+              font-size: 20px; 
+              font-weight: bold; 
+              margin-bottom: 5px;
+              text-transform: uppercase;
+            }
+            .invoice-info { 
+              margin: 15px 0; 
+              padding: 10px 0; 
+              border-top: 1px dashed #333; 
+              border-bottom: 1px dashed #333;
+              font-size: 12px;
+            }
+            .item { 
+              display: flex; 
+              justify-content: space-between; 
+              margin: 5px 0;
+              font-size: 12px;
+            }
+            .item-detail {
+              display: grid;
+              grid-template-columns: 2fr 1fr 1fr;
+              gap: 5px;
+              margin: 3px 0;
+            }
+            .total-section { 
+              margin-top: 15px; 
+              padding-top: 10px; 
+              border-top: 2px dashed #333; 
+              font-weight: bold;
+            }
+            .payment-info { 
+              margin-top: 15px; 
+              padding: 10px; 
+              background: #f5f5f5;
+              border-radius: 5px;
+              font-size: 12px;
+            }
+            .footer { 
+              text-align: center; 
+              margin-top: 20px; 
+              font-size: 11px;
+              border-top: 1px dashed #333;
+              padding-top: 15px;
+            }
+            .thankyou { 
+              text-align: center; 
+              margin-top: 15px; 
+              font-size: 14px;
+              font-weight: bold;
+              color: #2c3e50;
+            }
+            .code {
+              font-size: 16px;
+              font-weight: bold;
+              letter-spacing: 2px;
+              text-align: center;
+              background: #fff;
+              padding: 10px;
+              margin: 10px 0;
+              border: 1px solid #333;
+            }
+            .label {
+              color: #666;
+              margin-right: 10px;
+            }
+          </style>
+        </head>
+        <body>
+          ${printContent.outerHTML}
+        </body>
+      </html>
+    `);
+    
+    printWindow.document.close();
+    printWindow.focus();
+    
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 500);
+  };
+
+  // Fungsi untuk Admin (manajemen produk) - HANYA ADMIN
+  const [showProductManagement, setShowProductManagement] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [newProduct, setNewProduct] = useState({
+    name: "",
+    price: "",
+    category_id: "",
+    stock: "",
+    description: "",
+    image_url: ""
+  });
+
+  const handleAddProduct = async () => {
+    if (!isAdmin) {
+      alert("Akses ditolak. Hanya admin yang dapat menambah produk.");
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.post(`${API_BASE_URL}/products`, newProduct, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      alert("✅ Produk berhasil ditambahkan!");
+      setNewProduct({
+        name: "",
+        price: "",
+        category_id: "",
+        stock: "",
+        description: "",
+        image_url: ""
+      });
+      fetchProductsAndCategories();
+    } catch (error) {
+      alert("❌ Gagal menambah produk: " + error.message);
+    }
+  };
+
+  const handleUpdateProduct = async () => {
+    if (!isAdmin) {
+      alert("Akses ditolak. Hanya admin yang dapat mengupdate produk.");
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      await axios.put(`${API_BASE_URL}/products/${editingProduct.id}`, editingProduct, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      alert("✅ Produk berhasil diupdate!");
+      setEditingProduct(null);
+      fetchProductsAndCategories();
+    } catch (error) {
+      alert("❌ Gagal mengupdate produk: " + error.message);
+    }
+  };
+
+  const handleDeleteProduct = async (productId) => {
+    if (!isAdmin) {
+      alert("Akses ditolak. Hanya admin yang dapat menghapus produk.");
+      return;
+    }
+
+    if (!window.confirm("Apakah Anda yakin ingin menghapus produk ini?")) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      await axios.delete(`${API_BASE_URL}/products/${productId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      alert("✅ Produk berhasil dihapus!");
+      fetchProductsAndCategories();
+    } catch (error) {
+      alert("❌ Gagal menghapus produk: " + error.message);
+    }
+  };
+
+  const handleSearch = (e) => {
+    setSearchQuery(e.target.value);
+  };
+
+  const clearSearch = () => {
+    setSearchQuery("");
+  };
+
+  const filteredProducts = products.filter(product => {
+    const categoryMatch = selectedCategory === "Semua" || product.category === selectedCategory;
+    const searchMatch = searchQuery === "" || 
+      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (product.description && product.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      product.category.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    return categoryMatch && searchMatch;
+  });
 
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  // Format harga tanpa desimal
   const formatPrice = (price) => {
     return `Rp ${Math.round(price).toLocaleString('id-ID')}`;
   };
 
+  // Filter metode pembayaran berdasarkan role
+  const getAvailablePaymentMethods = () => {
+    if (isCashier) {
+      // Cashier melihat semua metode + metode tunai
+      return paymentMethods;
+    } else {
+      // Customer hanya melihat metode non-cashier
+      return paymentMethods.filter(method => !method.forRole || method.forRole !== "cashier");
+    }
+  };
+
+  // Group payment methods by category
+  const groupedPayments = getAvailablePaymentMethods().reduce((groups, method) => {
+    if (!groups[method.category]) {
+      groups[method.category] = [];
+    }
+    groups[method.category].push(method);
+    return groups;
+  }, {});
+
   return (
     <div className="dashboard-container">
+      <SideMenu />
+
       {/* HEADER */}
-      <div className="dashboard-header">
+       <div className="dashboard-header" style={{ marginLeft: '60px' }}> 
         <div>
-          <h1>🛍️ Toko Elektronik Digital</h1>
-          <p>Jelajahi produk elektronik terbaik berdasarkan kategori</p>
+          <h1>
+            🛍️ Toko Elektronik Digital
+            {isAdmin && (
+              <span style={{
+                fontSize: '14px',
+                background: '#ef4444',
+                color: 'white',
+                padding: '4px 12px',
+                borderRadius: '20px',
+                marginLeft: '15px',
+                verticalAlign: 'middle'
+              }}>
+                👑 Administrator
+              </span>
+            )}
+            {isCashier && (
+              <span style={{
+                fontSize: '14px',
+                background: '#f59e0b',
+                color: 'white',
+                padding: '4px 12px',
+                borderRadius: '20px',
+                marginLeft: '15px',
+                verticalAlign: 'middle'
+              }}>
+                🛎️ Cashier
+              </span>
+            )}
+          </h1>
+          <p>
+            {isAdmin && "Panel Administrasi - Kelola Produk"}
+            {isCashier && "Mode Kasir - Melayani Pembelian Customer"}
+            {isCustomer && "Jelajahi produk elektronik terbaik"}
+          </p>
           {user && (
             <p style={{ fontSize: '14px', color: '#3b82f6', marginTop: '5px' }}>
               👋 Selamat datang, {user.name || user.username}
+              {user.role && <span> ({user.role})</span>}
+              {user.membership && isCustomer && <span> - {user.membership} Member</span>}
             </p>
           )}
         </div>
+        
+        {/* SEARCH BAR - Untuk semua user */}
+        <div className="search-container" style={{ 
+          flex: 1, 
+          maxWidth: '400px', 
+          margin: '0 20px',
+          position: 'relative'
+        }}>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center',
+            background: 'white',
+            border: '1px solid #e5e7eb',
+            borderRadius: '50px',
+            padding: '5px 15px',
+            boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
+          }}>
+            <span style={{ marginRight: '10px', color: '#9ca3af' }}>🔍</span>
+            <input
+              type="text"
+              placeholder="Cari produk..."
+              value={searchQuery}
+              onChange={handleSearch}
+              style={{
+                flex: 1,
+                padding: '10px 5px',
+                border: 'none',
+                outline: 'none',
+                fontSize: '14px'
+              }}
+            />
+            {searchQuery && (
+              <button
+                onClick={clearSearch}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#9ca3af',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  padding: '5px'
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          
+          {searchQuery && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: '15px',
+              marginTop: '5px',
+              fontSize: '12px',
+              color: '#6b7280'
+            }}>
+              Menampilkan {filteredProducts.length} hasil
+            </div>
+          )}
+        </div>
+
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          {/* Tombol Manajemen Produk - HANYA UNTUK ADMIN */}
+          {isAdmin && (
+            <button 
+              onClick={() => setShowProductManagement(!showProductManagement)}
+              style={{
+                background: '#ef4444',
+                color: 'white',
+                border: 'none',
+                padding: '10px 15px',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '14px'
+              }}
+            >
+              ⚙️ Kelola Produk
+            </button>
+          )}
+          
+          {/* Tombol Mode Cashier - Hanya untuk Cashier (untuk melayani) */}
+          {isCashier && (
+            <button 
+              onClick={() => setCashierMode(!cashierMode)}
+              style={{
+                background: cashierMode ? '#10b981' : '#f59e0b',
+                color: 'white',
+                border: 'none',
+                padding: '10px 15px',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '14px'
+              }}
+            >
+              {cashierMode ? '✅ Sedang Melayani' : '🛎️ Mulai Melayani'}
+            </button>
+          )}
+          
+          {/* Tombol Riwayat Transaksi - UNTUK SEMUA USER (tapi kontennya beda) */}
           <button 
-            onClick={() => setShowCart(!showCart)}
+            onClick={() => setShowHistory(!showHistory)}
             style={{
-              background: '#3b82f6',
+              background: '#8b5cf6',
               color: 'white',
               border: 'none',
-              padding: '10px 20px',
+              padding: '10px 15px',
               borderRadius: '10px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '5px',
-              position: 'relative'
+              fontSize: '14px'
             }}
           >
-            🛒 Keranjang
-            {cartItemCount > 0 && (
+            📋 Riwayat Transaksi
+            {isCashier && transactionHistory.filter(t => t.processedBy === "Cashier (Offline)").length > 0 && (
               <span style={{
                 background: '#ef4444',
                 color: 'white',
                 borderRadius: '50%',
-                padding: '2px 8px',
-                fontSize: '12px',
+                padding: '2px 6px',
+                fontSize: '10px',
                 marginLeft: '5px'
               }}>
-                {cartItemCount}
+                {transactionHistory.filter(t => t.processedBy === "Cashier (Offline)").length}
               </span>
             )}
           </button>
+          
+          {/* Tombol Keranjang - Untuk Customer dan Cashier (saat mode kasir) */}
+          {(isCustomer || (isCashier && cashierMode)) && (
+            <button 
+              onClick={() => setShowCart(!showCart)}
+              style={{
+                background: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                padding: '10px 20px',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                position: 'relative'
+              }}
+            >
+              🛒 Keranjang
+              {cartItemCount > 0 && (
+                <span style={{
+                  background: '#ef4444',
+                  color: 'white',
+                  borderRadius: '50%',
+                  padding: '2px 8px',
+                  fontSize: '12px',
+                  marginLeft: '5px'
+                }}>
+                  {cartItemCount}
+                </span>
+              )}
+            </button>
+          )}
+          
           <button onClick={handleLogout} className="logout-btn">🔓 Logout</button>
         </div>
       </div>
 
-      {/* CART MODAL */}
-      {showCart && (
+      {/* Cashier Mode Banner */}
+      {isCashier && cashierMode && (
+        <div style={{
+          background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+          color: 'white',
+          padding: '15px 20px',
+          margin: '10px 20px',
+          borderRadius: '10px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <div>
+            <span style={{ fontSize: '20px', marginRight: '10px' }}>🛎️</span>
+            <strong>Mode Kasir Aktif</strong> - Anda sedang melayani customer offline
+          </div>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <input
+              type="text"
+              placeholder="Nama Customer *"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              style={{
+                padding: '8px 12px',
+                borderRadius: '5px',
+                border: 'none',
+                width: '200px'
+              }}
+              required
+            />
+            <input
+              type="text"
+              placeholder="No. Telepon (opsional)"
+              value={customerPhone}
+              onChange={(e) => setCustomerPhone(e.target.value)}
+              style={{
+                padding: '8px 12px',
+                borderRadius: '5px',
+                border: 'none',
+                width: '150px'
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ERROR MESSAGE */}
+      {error && (
+        <div style={{
+          background: '#fee2e2',
+          color: '#dc2626',
+          padding: '15px',
+          borderRadius: '10px',
+          margin: '20px',
+          textAlign: 'center',
+          border: '1px solid #fecaca'
+        }}>
+          <strong>❌ Error:</strong> {error}
+          <br />
+          <small>Pastikan backend berjalan di http://localhost:3000</small>
+        </div>
+      )}
+
+      {/* PRODUCT MANAGEMENT MODAL - HANYA UNTUK ADMIN */}
+      {showProductManagement && isAdmin && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          background: 'white',
+          padding: '30px',
+          borderRadius: '20px',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          zIndex: 1000,
+          maxWidth: '600px',
+          width: '90%',
+          maxHeight: '80vh',
+          overflowY: 'auto'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h2 style={{ color: '#1e40af', margin: 0 }}>⚙️ Kelola Produk</h2>
+            <button 
+              onClick={() => setShowProductManagement(false)}
+              style={{
+                background: 'none',
+                border: 'none',
+                fontSize: '24px',
+                cursor: 'pointer',
+                color: '#666'
+              }}
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Form Tambah Produk */}
+          <div style={{ marginBottom: '30px', padding: '20px', background: '#f8fafc', borderRadius: '10px' }}>
+            <h3 style={{ margin: '0 0 15px 0' }}>➕ Tambah Produk Baru</h3>
+            <div style={{ display: 'grid', gap: '10px' }}>
+              <input
+                type="text"
+                placeholder="Nama Produk"
+                value={newProduct.name}
+                onChange={(e) => setNewProduct({...newProduct, name: e.target.value})}
+                style={{ padding: '10px', borderRadius: '5px', border: '1px solid #e5e7eb' }}
+              />
+              <input
+                type="number"
+                placeholder="Harga"
+                value={newProduct.price}
+                onChange={(e) => setNewProduct({...newProduct, price: e.target.value})}
+                style={{ padding: '10px', borderRadius: '5px', border: '1px solid #e5e7eb' }}
+              />
+              <select
+                value={newProduct.category_id}
+                onChange={(e) => setNewProduct({...newProduct, category_id: e.target.value})}
+                style={{ padding: '10px', borderRadius: '5px', border: '1px solid #e5e7eb' }}
+              >
+                <option value="">Pilih Kategori</option>
+                {categories.filter(c => c.id !== 0).map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+              <input
+                type="number"
+                placeholder="Stok"
+                value={newProduct.stock}
+                onChange={(e) => setNewProduct({...newProduct, stock: e.target.value})}
+                style={{ padding: '10px', borderRadius: '5px', border: '1px solid #e5e7eb' }}
+              />
+              <textarea
+                placeholder="Deskripsi"
+                value={newProduct.description}
+                onChange={(e) => setNewProduct({...newProduct, description: e.target.value})}
+                style={{ padding: '10px', borderRadius: '5px', border: '1px solid #e5e7eb', minHeight: '80px' }}
+              />
+              <input
+                type="text"
+                placeholder="URL Gambar"
+                value={newProduct.image_url}
+                onChange={(e) => setNewProduct({...newProduct, image_url: e.target.value})}
+                style={{ padding: '10px', borderRadius: '5px', border: '1px solid #e5e7eb' }}
+              />
+              <button
+                onClick={handleAddProduct}
+                style={{
+                  padding: '12px',
+                  background: '#10b981',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '5px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                Tambah Produk
+              </button>
+            </div>
+          </div>
+
+          {/* Daftar Produk untuk Admin */}
+          <h3 style={{ margin: '20px 0 10px 0' }}>📦 Daftar Produk</h3>
+          <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+            {products.map(product => (
+              <div key={product.id} style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '10px',
+                border: '1px solid #e5e7eb',
+                borderRadius: '5px',
+                marginBottom: '5px'
+              }}>
+                <div>
+                  <div style={{ fontWeight: 'bold' }}>{product.name}</div>
+                  <div style={{ fontSize: '12px', color: '#666' }}>Stok: {product.stock}</div>
+                </div>
+                <div>
+                  <button
+                    onClick={() => setEditingProduct(product)}
+                    style={{
+                      padding: '5px 10px',
+                      background: '#3b82f6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '3px',
+                      marginRight: '5px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ✏️ Edit
+                  </button>
+                  <button
+                    onClick={() => handleDeleteProduct(product.id)}
+                    style={{
+                      padding: '5px 10px',
+                      background: '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '3px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🗑️ Hapus
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* HISTORY MODAL - UNTUK SEMUA USER (tapi kontennya beda) */}
+      {showHistory && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          background: 'white',
+          padding: '25px',
+          borderRadius: '20px',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          zIndex: 1000,
+          maxWidth: '700px',
+          width: '90%',
+          maxHeight: '80vh',
+          overflowY: 'auto'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h2 style={{ color: '#1e40af', margin: 0 }}>
+              {isAdmin ? '📋 Semua Transaksi' : 
+               isCashier ? '📋 Riwayat Transaksi (Yang Saya Layani)' : 
+               '📋 Riwayat Transaksi Saya'}
+            </h2>
+            <button 
+              onClick={() => setShowHistory(false)}
+              style={{
+                background: 'none',
+                border: 'none',
+                fontSize: '24px',
+                cursor: 'pointer',
+                color: '#666'
+              }}
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Filter & Info */}
+          <div style={{
+            background: '#f3f4f6',
+            padding: '10px 15px',
+            borderRadius: '10px',
+            marginBottom: '20px',
+            fontSize: '14px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span>
+              {isCashier && "Menampilkan transaksi yang Anda layani"}
+              {isAdmin && `Total Semua Transaksi: ${transactionHistory.length}`}
+              {isCustomer && `Total Transaksi Anda: ${transactionHistory.filter(t => t.customer === (user?.name || user?.username)).length}`}
+            </span>
+            {isCashier && (
+              <span style={{ background: '#f59e0b', color: 'white', padding: '3px 10px', borderRadius: '15px', fontSize: '12px' }}>
+                🛎️ Cashier Mode
+              </span>
+            )}
+          </div>
+
+          {transactionHistory.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '30px', color: '#666' }}>
+              <div style={{ fontSize: '48px', marginBottom: '10px' }}>📭</div>
+              <p>Belum ada riwayat transaksi</p>
+            </div>
+          ) : (
+            // Filter transaksi berdasarkan role
+            transactionHistory
+              .filter(trans => {
+                if (isAdmin) return true; // Admin lihat semua
+                if (isCashier) return trans.processedBy === "Cashier (Offline)"; // Cashier lihat yang dilayani saja
+                return trans.customer === (user?.name || user?.username); // Customer lihat transaksinya sendiri
+              })
+              .map((trans, index) => (
+                <div key={index} style={{
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '10px',
+                  padding: '15px',
+                  marginBottom: '15px',
+                  background: '#f9fafb',
+                  position: 'relative'
+                }}>
+                  {trans.processedBy === "Cashier (Offline)" && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '-8px',
+                      right: '10px',
+                      background: '#f59e0b',
+                      color: 'white',
+                      padding: '2px 10px',
+                      borderRadius: '12px',
+                      fontSize: '11px'
+                    }}>
+                      🛎️ Dilayani Kasir
+                    </div>
+                  )}
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                    <span style={{ fontWeight: 'bold' }}>{trans.invoiceNumber}</span>
+                    <span style={{ color: '#10b981', fontWeight: 'bold' }}>{trans.paymentStatus}</span>
+                  </div>
+                  
+                  <div style={{ fontSize: '13px', color: '#4b5563', marginBottom: '5px' }}>
+                    {trans.date}
+                  </div>
+                  
+                  {/* Admin melihat semua detail */}
+                  {isAdmin && (
+                    <>
+                      <div style={{ fontSize: '12px', marginBottom: '5px' }}>
+                        👤 Customer: <strong>{trans.customer}</strong>
+                      </div>
+                      <div style={{ fontSize: '12px', marginBottom: '5px', color: '#f59e0b' }}>
+                        🛎️ Dilayani oleh: {trans.cashier}
+                      </div>
+                    </>
+                  )}
+                  
+                  {/* Cashier melihat customer yang dilayani */}
+                  {isCashier && (
+                    <div style={{ fontSize: '12px', marginBottom: '5px' }}>
+                      👤 Customer: <strong>{trans.customer}</strong>
+                      {trans.customerPhone !== "-" && (
+                        <span style={{ marginLeft: '10px', color: '#6b7280' }}>
+                          📞 {trans.customerPhone}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Customer hanya melihat transaksinya sendiri (tanpa info cashier) */}
+                  
+                  {/* Daftar item yang dibeli (ringkasan) */}
+                  <div style={{
+                    background: 'white',
+                    padding: '8px',
+                    borderRadius: '5px',
+                    marginTop: '8px',
+                    fontSize: '12px'
+                  }}>
+                    {trans.items.map((item, idx) => (
+                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                        <span>{item.name} x{item.quantity}</span>
+                        <span>{formatPrice(item.price * item.quantity)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* Total */}
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    marginTop: '10px',
+                    paddingTop: '8px',
+                    borderTop: '1px dashed #ccc',
+                    fontWeight: 'bold'
+                  }}>
+                    <span>Total:</span>
+                    <span style={{ color: '#3b82f6' }}>{formatPrice(trans.total)}</span>
+                  </div>
+                  
+                  {/* Metode pembayaran */}
+                  <div style={{ 
+                    fontSize: '11px', 
+                    color: '#6b7280', 
+                    marginTop: '5px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}>
+                    <span>{trans.paymentIcon}</span>
+                    <span>{trans.paymentMethod}</span>
+                  </div>
+                </div>
+              ))
+          )}
+        </div>
+      )}
+
+      {/* CART MODAL - Untuk Customer dan Cashier (saat mode kasir) */}
+      {(isCustomer || (isCashier && cashierMode)) && showCart && (
         <div style={{
           position: 'fixed',
           top: '50%',
@@ -327,12 +1247,12 @@ function DashboardPage({ setIsLogin }) {
           maxWidth: '500px',
           width: '90%',
           maxHeight: '80vh',
-          minWidth : '120 px',
-          justifyContent: 'center',
           overflowY: 'auto'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <h2 style={{ color: '#1e40af', margin: 0 }}>🛒 Keranjang Belanja</h2>
+            <h2 style={{ color: '#1e40af', margin: 0 }}>
+              {isCashier ? '🛒 Keranjang Customer' : '🛒 Keranjang Belanja'}
+            </h2>
             <button 
               onClick={() => setShowCart(false)}
               style={{
@@ -398,13 +1318,16 @@ function DashboardPage({ setIsLogin }) {
                 borderRadius: '10px'
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                  <span>Total:</span>
+                  <span>Subtotal:</span>
                   <span style={{ color: '#3b82f6' }}>{formatPrice(cartTotal)}</span>
+                </div>
+                <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '5px' }}>
+                  *Belum termasuk pajak & biaya pengiriman
                 </div>
               </div>
 
               <button
-                onClick={handleCheckout}
+                onClick={isCashier ? handleCashierCheckout : handleCheckout}
                 style={{
                   width: '100%',
                   padding: '15px',
@@ -418,14 +1341,476 @@ function DashboardPage({ setIsLogin }) {
                   fontSize: '16px'
                 }}
               >
-                ✅ Checkout
+                {isCashier ? '✅ Proses Pembayaran Customer' : '✅ Lanjut ke Pembayaran'}
               </button>
             </>
           )}
         </div>
       )}
 
-      {/* CATEGORY FILTER */}
+      {/* CHECKOUT MODAL - PAYMENT METHODS */}
+      {showCheckoutModal && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          background: 'white',
+          padding: '30px',
+          borderRadius: '20px',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          zIndex: 1001,
+          maxWidth: '700px',
+          width: '90%',
+          maxHeight: '80vh',
+          overflowY: 'auto'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h2 style={{ color: '#1e40af', margin: 0 }}>💳 Pilih Metode Pembayaran</h2>
+            <button 
+              onClick={() => setShowCheckoutModal(false)}
+              style={{
+                background: 'none',
+                border: 'none',
+                fontSize: '24px',
+                cursor: 'pointer',
+                color: '#666'
+              }}
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Ringkasan Belanja */}
+          <div style={{
+            background: '#f8fafc',
+            padding: '15px',
+            borderRadius: '10px',
+            marginBottom: '20px'
+          }}>
+            <h3 style={{ margin: '0 0 10px 0', fontSize: '16px' }}>🛍️ Ringkasan Belanja</h3>
+            {cart.map(item => (
+              <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '5px' }}>
+                <span>{item.name} x{item.quantity}</span>
+                <span>{formatPrice(item.price * item.quantity)}</span>
+              </div>
+            ))}
+            
+            {/* Estimasi Biaya */}
+            <div style={{ borderTop: '1px solid #e2e8f0', marginTop: '10px', paddingTop: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '5px' }}>
+                <span>Subtotal:</span>
+                <span>{formatPrice(cartTotal)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '5px', color: '#6b7280' }}>
+                <span>PPN 11%:</span>
+                <span>{formatPrice(cartTotal * 0.11)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '5px', color: '#6b7280' }}>
+                <span>Biaya Kirim:</span>
+                <span>{cartTotal > 500000 ? 'Gratis' : formatPrice(15000)}</span>
+              </div>
+              {selectedPayment && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '5px', color: '#6b7280' }}>
+                  <span>Biaya Admin:</span>
+                  <span>{formatPrice(paymentMethods.find(m => m.id === selectedPayment)?.adminFee || 0)}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: 'bold', marginTop: '5px', borderTop: '1px solid #e2e8f0', paddingTop: '5px' }}>
+                <span>Estimasi Total:</span>
+                <span style={{ color: '#3b82f6' }}>
+                  {formatPrice(
+                    cartTotal + 
+                    (cartTotal * 0.11) + 
+                    (cartTotal > 500000 ? 0 : 15000) + 
+                    (paymentMethods.find(m => m.id === selectedPayment)?.adminFee || 0)
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Payment Methods by Category */}
+          {Object.entries(groupedPayments).map(([category, methods]) => (
+            <div key={category} style={{ marginBottom: '25px' }}>
+              <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#374151' }}>
+                {category === 'Virtual Account' && '🏦'}
+                {category === 'E-Wallet' && '📱'}
+                {category === 'Retail' && '🏪'}
+                {category === 'Kartu Kredit' && '💳'}
+                {category === 'Tunai' && '💵'}
+                {category === 'Debit' && '💳'}
+                {' '}{category}
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '12px' }}>
+                {methods.map(method => (
+                  <div
+                    key={method.id}
+                    onClick={() => setSelectedPayment(method.id)}
+                    style={{
+                      border: `2px solid ${selectedPayment === method.id ? '#3b82f6' : '#e5e7eb'}`,
+                      borderRadius: '12px',
+                      padding: '15px 12px',
+                      cursor: 'pointer',
+                      background: selectedPayment === method.id ? '#eff6ff' : 'white',
+                      transition: 'all 0.2s',
+                      position: 'relative',
+                      boxShadow: selectedPayment === method.id ? '0 4px 12px rgba(59,130,246,0.1)' : 'none'
+                    }}
+                  >
+                    <div style={{ fontSize: '28px', marginBottom: '8px', textAlign: 'center' }}>{method.icon}</div>
+                    <div style={{ 
+                      fontWeight: selectedPayment === method.id ? 'bold' : 'normal',
+                      fontSize: '13px',
+                      textAlign: 'center',
+                      marginBottom: '4px'
+                    }}>
+                      {method.name}
+                    </div>
+                    <div style={{ 
+                      fontSize: '11px', 
+                      color: '#6b7280',
+                      textAlign: 'center',
+                      display: 'flex',
+                      justifyContent: 'center',
+                      gap: '8px'
+                    }}>
+                      <span>⏱️ {method.processingTime}</span>
+                      <span>💰 {formatPrice(method.adminFee)}</span>
+                    </div>
+                    {method.forRole === "cashier" && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '-8px',
+                        left: '-8px',
+                        background: '#f59e0b',
+                        color: 'white',
+                        borderRadius: '12px',
+                        padding: '2px 8px',
+                        fontSize: '10px'
+                      }}>
+                        🛎️ Kasir
+                      </div>
+                    )}
+                    {selectedPayment === method.id && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '-8px',
+                        right: '-8px',
+                        background: '#3b82f6',
+                        color: 'white',
+                        borderRadius: '50%',
+                        width: '24px',
+                        height: '24px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '14px'
+                      }}>
+                        ✓
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {/* Tombol Proses Pembayaran */}
+          <button
+            onClick={processPayment}
+            style={{
+              width: '100%',
+              padding: '16px',
+              background: selectedPayment ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : '#9ca3af',
+              color: 'white',
+              border: 'none',
+              borderRadius: '12px',
+              cursor: selectedPayment ? 'pointer' : 'not-allowed',
+              fontWeight: 'bold',
+              fontSize: '16px',
+              marginTop: '10px',
+              transition: 'all 0.2s'
+            }}
+            disabled={!selectedPayment}
+          >
+            {selectedPayment 
+              ? `✅ Proses Pembayaran dengan ${paymentMethods.find(m => m.id === selectedPayment)?.name}`
+              : '⚠️ Pilih Metode Pembayaran'
+            }
+          </button>
+        </div>
+      )}
+
+      {/* RECEIPT MODAL */}
+      {showReceipt && receiptData && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          background: 'white',
+          padding: '30px',
+          borderRadius: '20px',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          zIndex: 1002,
+          maxWidth: '500px',
+          width: '95%',
+          maxHeight: '85vh',
+          overflowY: 'auto'
+        }}>
+          {/* Tombol Close */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}>
+            <button 
+              onClick={closeReceipt}
+              style={{
+                background: 'none',
+                border: 'none',
+                fontSize: '20px',
+                cursor: 'pointer',
+                color: '#666',
+                padding: '5px'
+              }}
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Konten Struk */}
+          <div id="receipt-content">
+            <div className="receipt" style={{
+              fontFamily: "'Courier New', monospace",
+              padding: '20px',
+              border: '2px dashed #333',
+              borderRadius: '8px',
+              background: '#fff'
+            }}>
+              {/* Header */}
+              <div className="header" style={{ textAlign: 'center', marginBottom: '20px' }}>
+                <div style={{ fontSize: '32px', marginBottom: '10px' }}>🛍️</div>
+                <div style={{ fontSize: '20px', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                  TOKO ELEKTRONIK DIGITAL
+                </div>
+                <div style={{ fontSize: '11px', color: '#666', marginTop: '5px' }}>
+                  {receiptData.storeAddress}
+                </div>
+                <div style={{ fontSize: '11px', color: '#666' }}>
+                  Telp: {receiptData.storePhone}
+                </div>
+              </div>
+
+              {/* Info Invoice */}
+              <div className="invoice-info" style={{
+                borderTop: '1px dashed #333',
+                borderBottom: '1px dashed #333',
+                padding: '12px 0',
+                marginBottom: '15px',
+                fontSize: '12px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span className="label">No. Invoice:</span>
+                  <span style={{ fontWeight: 'bold' }}>{receiptData.invoiceNumber}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span className="label">Tanggal:</span>
+                  <span>{receiptData.date}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span className="label">Kasir:</span>
+                  <span>{receiptData.cashier}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span className="label">Pelanggan:</span>
+                  <span>{receiptData.customer}</span>
+                </div>
+                {receiptData.customerPhone !== "-" && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span className="label">No. Telp:</span>
+                    <span>{receiptData.customerPhone}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Daftar Item */}
+              <div style={{ marginBottom: '15px' }}>
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: '2fr 1fr 1fr',
+                  fontWeight: 'bold',
+                  fontSize: '12px',
+                  padding: '5px 0',
+                  borderBottom: '2px solid #333',
+                  marginBottom: '5px'
+                }}>
+                  <span>Item</span>
+                  <span style={{ textAlign: 'center' }}>Qty</span>
+                  <span style={{ textAlign: 'right' }}>Harga</span>
+                </div>
+                
+                {receiptData.items.map((item, index) => (
+                  <div key={index} style={{
+                    display: 'grid',
+                    gridTemplateColumns: '2fr 1fr 1fr',
+                    fontSize: '11px',
+                    padding: '4px 0',
+                    borderBottom: '1px dotted #ccc'
+                  }}>
+                    <span>{item.name}</span>
+                    <span style={{ textAlign: 'center' }}>{item.quantity}</span>
+                    <span style={{ textAlign: 'right' }}>{formatPrice(item.price * item.quantity)}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Ringkasan Pembayaran */}
+              <div className="total-section" style={{
+                borderTop: '2px dashed #333',
+                paddingTop: '12px',
+                fontSize: '12px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Subtotal:</span>
+                  <span>{formatPrice(receiptData.subtotal)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>PPN 11%:</span>
+                  <span>{formatPrice(receiptData.tax)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Biaya Admin:</span>
+                  <span>{formatPrice(receiptData.adminFee)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Biaya Kirim:</span>
+                  <span>{receiptData.shippingCost === 0 ? 'Gratis' : formatPrice(receiptData.shippingCost)}</span>
+                </div>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontWeight: 'bold',
+                  fontSize: '14px',
+                  borderTop: '2px solid #333',
+                  marginTop: '8px',
+                  paddingTop: '8px'
+                }}>
+                  <span>TOTAL:</span>
+                  <span style={{ color: '#3b82f6' }}>{formatPrice(receiptData.total)}</span>
+                </div>
+              </div>
+
+              {/* Kode Pembayaran */}
+              <div className="code" style={{
+                background: '#f3f4f6',
+                padding: '12px',
+                marginTop: '15px',
+                textAlign: 'center',
+                borderRadius: '5px',
+                fontFamily: 'monospace',
+                fontSize: '14px',
+                fontWeight: 'bold'
+              }}>
+                {receiptData.paymentCategory === "Virtual Account" && "🏦 Virtual Account:"}
+                {receiptData.paymentCategory === "E-Wallet" && "📱 Nomor E-Wallet:"}
+                {receiptData.paymentCategory === "Retail" && "🏪 Kode Bayar:"}
+                {receiptData.paymentCategory === "Kartu Kredit" && "💳 Kartu Kredit:"}
+                {receiptData.paymentCategory === "Tunai" && "💵 Pembayaran Tunai:"}
+                {receiptData.paymentCategory === "Debit" && "💳 Kartu Debit:"}
+                <br />
+                <span style={{ fontSize: '18px', letterSpacing: '2px' }}>
+                  {receiptData.paymentCode}
+                </span>
+              </div>
+
+              {/* Info Pembayaran */}
+              <div className="payment-info" style={{
+                marginTop: '15px',
+                padding: '12px',
+                background: '#f8fafc',
+                borderRadius: '5px',
+                fontSize: '11px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '20px' }}>{receiptData.paymentIcon}</span>
+                  <div>
+                    <div style={{ fontWeight: 'bold' }}>{receiptData.paymentMethod}</div>
+                    <div style={{ fontSize: '10px', color: '#6b7280' }}>{receiptData.paymentCategory}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '8px' }}>
+                  <div>
+                    <div className="label">Status:</div>
+                    <div style={{ color: '#10b981', fontWeight: 'bold' }}>{receiptData.paymentStatus}</div>
+                  </div>
+                  <div>
+                    <div className="label">ID Transaksi:</div>
+                    <div style={{ fontSize: '10px' }}>{receiptData.transactionId}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="footer" style={{
+                textAlign: 'center',
+                marginTop: '20px',
+                fontSize: '10px',
+                borderTop: '1px dashed #333',
+                paddingTop: '12px'
+              }}>
+                <div className="thankyou" style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '8px' }}>
+                  Terima kasih telah berbelanja!
+                </div>
+                <div>Barang yang sudah dibeli tidak dapat dikembalikan</div>
+                <div style={{ marginTop: '8px', color: '#666' }}>
+                  *Struk ini merupakan bukti pembayaran yang sah
+                </div>
+                <div style={{ marginTop: '8px', fontSize: '9px', color: '#999' }}>
+                  Diproses oleh: {receiptData.processedBy}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Tombol Aksi */}
+          <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+            <button
+              onClick={printReceipt}
+              style={{
+                flex: 2,
+                padding: '12px',
+                background: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '5px'
+              }}
+            >
+              🖨️ Cetak Struk
+            </button>
+            <button
+              onClick={closeReceipt}
+              style={{
+                flex: 1,
+                padding: '12px',
+                background: '#6b7280',
+                color: 'white',
+                border: 'none',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }}
+            >
+              Tutup
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* CATEGORY FILTER - Untuk semua user */}
       <div className="category-filter">
         <h2>📋 Kategori Produk</h2>
         <div className="category-buttons">
@@ -448,25 +1833,55 @@ function DashboardPage({ setIsLogin }) {
           <h2>
             {selectedCategory === "Semua" ? "📦 Semua Produk" : `${getCategoryIcon(selectedCategory)} ${selectedCategory}`}
             <span className="product-count"> ({filteredProducts.length} produk)</span>
+            {searchQuery && (
+              <span style={{ 
+                fontSize: '14px', 
+                fontWeight: 'normal',
+                color: '#6b7280',
+                marginLeft: '10px'
+              }}>
+                (hasil pencarian: "{searchQuery}")
+              </span>
+            )}
           </h2>
         </div>
 
-        {/* PRODUCT LIST DENGAN GAMBAR */}
+        {/* PRODUCT LIST */}
         <div className="product-list">
           {loading ? (
             <div className="loading">
               <div className="spinner">⏳</div>
-              <p>Memuat produk dari database...</p>
+              <p>Memuat produk...</p>
             </div>
           ) : filteredProducts.length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon">📭</div>
-              <p>Tidak ada produk dalam kategori ini</p>
+              <p>
+                {searchQuery 
+                  ? `Tidak ada produk yang cocok dengan "${searchQuery}"`
+                  : "Tidak ada produk dalam kategori ini"
+                }
+              </p>
+              {searchQuery && (
+                <button 
+                  onClick={clearSearch}
+                  style={{
+                    marginTop: '10px',
+                    padding: '8px 20px',
+                    background: '#3b82f6',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '5px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Hapus Pencarian
+                </button>
+              )}
             </div>
           ) : (
             filteredProducts.map((item) => (
               <div key={item.id} className="product-card">
-                {/* GAMBAR PRODUK */}
                 <div className="product-image-container">
                   <img 
                     src={item.image_url} 
@@ -474,13 +1889,27 @@ function DashboardPage({ setIsLogin }) {
                     className="product-image"
                     onError={(e) => {
                       e.target.onerror = null;
-                      e.target.src = 'https://picsum.photos/200/200';
+                      e.target.src = 'https://via.placeholder.com/200x200?text=No+Image';
                     }}
                   />
                 </div>
 
                 <div className="product-info">
-                  <h3>{item.name}</h3>
+                  <h3>
+                    {item.name}
+                    {searchQuery && item.name.toLowerCase().includes(searchQuery.toLowerCase()) && (
+                      <span style={{ 
+                        fontSize: '11px', 
+                        background: '#fef3c7', 
+                        color: '#d97706',
+                        padding: '2px 6px',
+                        borderRadius: '12px',
+                        marginLeft: '8px'
+                      }}>
+                        🔍 Cocok
+                      </span>
+                    )}
+                  </h3>
                   <div className="product-meta">
                     <span className="category-badge">{item.category}</span>
                     <div className="rating">
@@ -491,24 +1920,159 @@ function DashboardPage({ setIsLogin }) {
                   </div>
                   <p className="price">{formatPrice(item.price)}</p>
                   
-                  {/* TAMPILAN STOK */}
                   <div className={`stock-badge ${item.stock === 0 ? 'habis' : item.stock > 10 ? 'banyak' : 'sedikit'}`}>
                     Stok: {item.stock} {item.stock === 0 && '❌ Habis'}
                   </div>
+                  {item.description && (
+                    <p className="product-description" style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+                      {item.description.length > 50 
+                        ? item.description.substring(0, 50) + '...' 
+                        : item.description
+                      }
+                    </p>
+                  )}
                 </div>
 
-                <button 
-                  onClick={() => handleBuy(item.id, item.name)}
-                  className="buy-btn"
-                  disabled={item.stock === 0}
-                >
-                  🛒 {item.stock === 0 ? 'Stok Habis' : 'Beli'}
-                </button>
+                {/* Tombol Beli - Untuk Customer dan Cashier (saat mode kasir) */}
+                {(isCustomer || (isCashier && cashierMode)) && (
+                  <button 
+                    onClick={() => handleBuy(item.id, item.name)}
+                    className="buy-btn"
+                    disabled={item.stock === 0}
+                  >
+                    🛒 {item.stock === 0 ? 'Stok Habis' : 'Beli'}
+                  </button>
+                )}
+                
+                {/* Untuk Cashier yang belum aktif mode kasir */}
+                {isCashier && !cashierMode && (
+                  <div style={{
+                    padding: '8px',
+                    background: '#fef3c7',
+                    borderRadius: '5px',
+                    textAlign: 'center',
+                    fontSize: '11px',
+                    color: '#d97706',
+                    marginTop: '10px'
+                  }}>
+                    🛎️ Aktifkan Mode Kasir untuk melayani
+                  </div>
+                )}
+                
+                {/* Untuk Admin - hanya bisa lihat */}
+                {isAdmin && (
+                  <div style={{
+                    padding: '8px',
+                    background: '#f3f4f6',
+                    borderRadius: '5px',
+                    textAlign: 'center',
+                    fontSize: '12px',
+                    color: '#6b7280',
+                    marginTop: '10px'
+                  }}>
+                    👑 Mode Admin (Manajemen Produk)
+                  </div>
+                )}
               </div>
             ))
           )}
         </div>
       </div>
+
+      {/* EDIT PRODUCT MODAL - HANYA UNTUK ADMIN */}
+      {editingProduct && isAdmin && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          background: 'white',
+          padding: '30px',
+          borderRadius: '20px',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          zIndex: 1100,
+          maxWidth: '500px',
+          width: '90%'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h2 style={{ color: '#1e40af', margin: 0 }}>✏️ Edit Produk</h2>
+            <button 
+              onClick={() => setEditingProduct(null)}
+              style={{
+                background: 'none',
+                border: 'none',
+                fontSize: '24px',
+                cursor: 'pointer',
+                color: '#666'
+              }}
+            >
+              ✕
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gap: '10px' }}>
+            <input
+              type="text"
+              placeholder="Nama Produk"
+              value={editingProduct.name}
+              onChange={(e) => setEditingProduct({...editingProduct, name: e.target.value})}
+              style={{ padding: '10px', borderRadius: '5px', border: '1px solid #e5e7eb' }}
+            />
+            <input
+              type="number"
+              placeholder="Harga"
+              value={editingProduct.price}
+              onChange={(e) => setEditingProduct({...editingProduct, price: e.target.value})}
+              style={{ padding: '10px', borderRadius: '5px', border: '1px solid #e5e7eb' }}
+            />
+            <select
+              value={editingProduct.category_id}
+              onChange={(e) => setEditingProduct({...editingProduct, category_id: e.target.value})}
+              style={{ padding: '10px', borderRadius: '5px', border: '1px solid #e5e7eb' }}
+            >
+              <option value="">Pilih Kategori</option>
+              {categories.filter(c => c.id !== 0).map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+            <input
+              type="number"
+              placeholder="Stok"
+              value={editingProduct.stock}
+              onChange={(e) => setEditingProduct({...editingProduct, stock: e.target.value})}
+              style={{ padding: '10px', borderRadius: '5px', border: '1px solid #e5e7eb' }}
+            />
+            <textarea
+              placeholder="Deskripsi"
+              value={editingProduct.description}
+              onChange={(e) => setEditingProduct({...editingProduct, description: e.target.value})}
+              style={{ padding: '10px', borderRadius: '5px', border: '1px solid #e5e7eb', minHeight: '80px' }}
+            />
+            <input
+              type="text"
+              placeholder="URL Gambar"
+              value={editingProduct.image_url}
+              onChange={(e) => setEditingProduct({...editingProduct, image_url: e.target.value})}
+              style={{ padding: '10px', borderRadius: '5px', border: '1px solid #e5e7eb' }}
+            />
+            <button
+              onClick={handleUpdateProduct}
+              style={{
+                padding: '12px',
+                background: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                marginTop: '10px'
+              }}
+            >
+              Update Produk
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
